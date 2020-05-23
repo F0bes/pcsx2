@@ -99,7 +99,7 @@ cbuffer cb0
 	float4 VertexScale;
 	float4 VertexOffset;
 	float4 Texture_Scale_Offset;
-	uint DepthMask;
+	uint MaxDepth;
 	uint3 _pad_cb0;
 };
 
@@ -787,8 +787,8 @@ PS_OUTPUT ps_main(PS_INPUT input)
 
 VS_OUTPUT vs_main(VS_INPUT input)
 {
-	// Clamp to depth mask, gs doesn't wrap
-	input.z = min(input.z, DepthMask);
+	// Clamp to max depth, gs doesn't wrap
+	input.z = min(input.z, MaxDepth);
 
 	VS_OUTPUT output;
 

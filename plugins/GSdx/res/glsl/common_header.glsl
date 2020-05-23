@@ -65,7 +65,7 @@ layout(std140, binding = 20) uniform cb20
 
     vec4  TextureOffset;
 
-    uint  DepthMask;
+    uint  MaxDepth;
     uint  cb20_pad;
     vec2  PointSize;
 };

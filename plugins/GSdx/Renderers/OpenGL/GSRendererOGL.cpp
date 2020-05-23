@@ -171,19 +171,17 @@ void GSRendererOGL::EmulateZbuffer()
 		m_om_dssel.ztst = ZTST_ALWAYS;
 	}
 
-	uint32 max_z;
-	if (m_context->ZBUF.PSM == PSM_PSMZ32) {
-		max_z     = 0xFFFFFFFF;
-	} else if (m_context->ZBUF.PSM == PSM_PSMZ24) {
-		max_z     = 0xFFFFFF;
-	} else {
-		max_z     = 0xFFFF;
-	}
+	uint32 max_z = 0;
+	if (m_context->ZBUF.PSM == PSM_PSMZ32)
+		max_z = 0xFFFFFFFF;
+	else if (m_context->ZBUF.PSM == PSM_PSMZ24)
+		max_z = 0xFFFFFF;
+	else
+		max_z = 0xFFFF;
 
-	// The real GS appears to do no masking based on the Z buffer format and writing larger Z values
-	// than the buffer supports seems to be an error condition on the real GS, causing it to crash.
-	// We are probably receiving bad coordinates from VU1 in these cases.
-	vs_cb.DepthMask = GSVector2i(max_z, max_z);
+	// On the real GS we appear to do clamping on the max z value the format allows.
+	// Clamping is done after rasterization.
+	vs_cb.MaxDepth = GSVector2i(max_z, max_z);
 
 	GSVertex* v = &m_vertex.buff[0];
 	// Minor optimization of a corner case (it allow to better emulate some alpha test effects)
