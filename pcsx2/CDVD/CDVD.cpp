@@ -394,12 +394,12 @@ static __fi ElfObject* loadElf(const wxString filename)
 	return new ElfObject(fixedname, file);
 }
 
-static __fi void _reloadElfInfo(wxString elfpath)
+static __fi void _reloadElfInfo(wxString elfpath,bool reloadLastELF = false)
 {
 	// Now's a good time to reload the ELF info...
 	ScopedLock locker(Mutex_NewDiskCB);
 
-	if (elfpath == LastELF)
+	if (elfpath == LastELF && !reloadLastELF)
 		return;
 	LastELF = elfpath;
 
@@ -467,6 +467,10 @@ void cdvdReloadElfInfo(wxString elfoverride)
 		pxFail("Not in my back yard!");
 		Cpu->ThrowException(e);
 	}
+}
+
+void cdvdReloadLastElfInfo() {
+	_reloadElfInfo(LastELF, true);
 }
 
 static __fi s32 StrToS32(const wxString& str, int base = 10)

@@ -62,8 +62,11 @@ void Hle_SetElfPath(const char* elfFileName)
 	Console.WriteLn("HLE Host: Set 'host:' root path to: %s\n", hostRoot.c_str());
 }
 
-namespace R3000A
-{
+const char* Hle_GetHostRoot() {
+	return HostRoot;
+}
+
+namespace R3000A {
 
 #define v0 (psxRegs.GPR.n.v0)
 #define a0 (psxRegs.GPR.n.a0)

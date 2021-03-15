@@ -87,5 +87,6 @@ namespace R3000A
 } // namespace R3000A
 
 extern void Hle_SetElfPath(const char* elfFileName);
+extern const char* Hle_GetHostRoot();
 
 #endif /* __PSXBIOS_H__ */

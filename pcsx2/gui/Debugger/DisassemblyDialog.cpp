@@ -25,6 +25,7 @@
 #include "BreakpointWindow.h"
 #include "PathDefs.h"
 #include "wx/busyinfo.h"
+#include "CDVD/CDVD.h" // Required for cdvdReloadLastElfInfo()
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -145,8 +146,21 @@ void CpuTabPage::clearSymbolMap()
 
 void CpuTabPage::reloadSymbolMap()
 {
-	if (!symbolCount)
+	if (!symbolCount || ExecPS2Called)
 	{
+		if (ExecPS2Called) 
+		{
+			clearSymbolMap();
+			symbolMap.Clear();
+			// This needs to be called because ExecPS2Called is set by the syscall LoadExecPS2.
+			// At that point in time, the ELF hasn't been loaded into memory therefore
+			// the ELF has not been analysed yet
+			cdvdReloadLastElfInfo();
+			MIPSAnalyst::ScanForFunctions(ElfTextRange.first, ElfTextRange.first + ElfTextRange.second, true);
+
+			symbolMap.UpdateActiveSymbols();
+		}
+
 		auto funcs = symbolMap.GetAllSymbols(ST_FUNCTION);
 		symbolCount = funcs.size();
 		for (size_t i = 0; i < funcs.size(); i++)
@@ -154,6 +168,8 @@ void CpuTabPage::reloadSymbolMap()
 			wxString name = wxString(funcs[i].name.c_str(), wxConvUTF8);
 			functionList->Append(name, (void*)funcs[i].address);
 		}
+
+		ExecPS2Called = false;
 	}
 }
 

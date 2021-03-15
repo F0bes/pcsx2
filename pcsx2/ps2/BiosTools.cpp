@@ -52,6 +52,7 @@ static_assert( sizeof(romdir) == DIRENTRY_SIZE, "romdir struct not packed to 16 
 u32 BiosVersion;
 u32 BiosChecksum;
 u32 BiosRegion;
+bool ExecPS2Called;
 bool NoOSD;
 wxString BiosDescription;
 BiosDebugInformation CurrentBiosInformation;

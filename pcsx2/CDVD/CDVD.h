@@ -152,6 +152,7 @@ extern u8 cdvdRead(u8 key);
 extern void cdvdWrite(u8 key, u8 rt);
 
 extern void cdvdReloadElfInfo(wxString elfoverride = wxEmptyString);
+extern void cdvdReloadLastElfInfo();
 extern s32 cdvdCtrlTrayOpen();
 extern s32 cdvdCtrlTrayClose();
 

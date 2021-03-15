@@ -943,7 +943,19 @@ void SYSCALL()
 					}
 					DevCon.Warning("Set GS CRTC configuration. %s %s (%s)",mode.c_str(), inter, field);
 				}
-				break;
+			break;
+		case Syscall::LoadExecPS2:
+		{
+			wxString elf = wxString((char *)PSM(cpuRegs.GPR.n.a0.UL[0]));
+			ExecPS2Called = true;
+
+			if (elf.StartsWith("host:")) {				
+				elf = elf.SubString(5, elf.length());
+				elf = Hle_GetHostRoot() + elf;
+				GetCoreThread().SetElfOverride(elf);
+			}
+		}
+			break;
 		case Syscall::GetOsdConfigParam:
 			if(!NoOSD && g_SkipBiosHack)
 			{
