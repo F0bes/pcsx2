@@ -72,6 +72,7 @@ struct Counter
 	};
 	u32 target, hold;
 	u32 rate, interrupt;
+	u32 gateCount;
 	u32 sCycleT;		// delta values should be signed.
 };
 

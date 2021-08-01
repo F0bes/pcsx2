@@ -71,8 +71,9 @@ static bool IsAnalogVideoMode()
 	return (gsVideoMode == GS_VideoMode::PAL || gsVideoMode == GS_VideoMode::NTSC || gsVideoMode == GS_VideoMode::DVD_NTSC || gsVideoMode == GS_VideoMode::DVD_PAL);
 }
 
-void rcntReset(int index) {
-	counters[index].count = 0;
+void rcntReset(int index, bool clearcount = true) {
+	if(clearcount)
+		counters[index].count = 0;
 	counters[index].sCycleT = cpuRegs.cycle;
 }
 
@@ -87,7 +88,7 @@ static __fi void _rcntSet( int cntidx )
 	const Counter& counter = counters[cntidx];
 
 	// Stopped or special hsync gate?
-	if (!counter.mode.IsCounting || (counter.mode.ClockSource == 0x3) ) return;
+	if (!counter.mode.IsCounting && !counter.gateCount|| (counter.mode.ClockSource == 0x3) ) return;
 
 	// check for special cases where the overflow or target has just passed
 	// (we probably missed it because we're doing/checking other things)
@@ -707,7 +708,7 @@ __fi void rcntUpdate()
 
 		//if ( gates & (1<<i) ) continue;
 
-		if (!counters[i].mode.IsCounting ) continue;
+		if (!counters[i].mode.IsCounting && !counters[i].mode.IsCounting) continue;
 
 		if(counters[i].mode.ClockSource != 0x3)	// don't count hblank sources
 		{
@@ -741,8 +742,8 @@ static __fi void _rcntSetGate( int index )
 				index, counters[index].mode.GateSource ? "vblank" : "hblank", counters[index].mode.GateMode );
 
 			gates |= (1<<index);
-			counters[index].mode.IsCounting = 0;
-			rcntReset(index);
+			counters[index].gateCount = 0;
+			rcntReset(index,0);
 			return;
 		}
 		else
@@ -784,7 +785,7 @@ static __fi void rcntStartGate(bool isVblank, u32 sCycle)
 				// for events (overflows, targets, mode changes, and the gate off below)
 
 				counters[i].count = rcntRcount(i);
-				counters[i].mode.IsCounting = 0;
+				counters[i].gateCount = 0;
 				counters[i].sCycleT = sCycle;
 				EECNT_LOG("EE Counter[%d] %s StartGate Type0, count = %x", i,
 					isVblank ? "vblank" : "hblank", counters[i].count );
@@ -796,7 +797,7 @@ static __fi void rcntStartGate(bool isVblank, u32 sCycle)
 
 			case 0x1: //Reset and start counting on Vsync start
 			case 0x3: //Reset and start counting on Vsync start and end
-				counters[i].mode.IsCounting = 1;
+				counters[i].gateCount = 1;
 				counters[i].count = 0;
 				counters[i].target &= 0xffff;
 				counters[i].sCycleT = sCycle;
@@ -829,7 +830,7 @@ static __fi void rcntEndGate(bool isVblank , u32 sCycle)
 				// Set the count here.  Since the timer is being turned off it's
 				// important to record its count at this point (it won't be counted by
 				// calls to rcntUpdate).
-				counters[i].mode.IsCounting = 1;
+				counters[i].gateCount = 1;
 				counters[i].sCycleT = cpuRegs.cycle;
 				
 				EECNT_LOG("EE Counter[%d] %s EndGate Type0, count = %x", i,
@@ -842,7 +843,7 @@ static __fi void rcntEndGate(bool isVblank , u32 sCycle)
 
 			case 0x2: //Reset and start counting on Vsync end
 			case 0x3: //Reset and start counting on Vsync start and end
-				counters[i].mode.IsCounting = 1;
+				counters[i].gateCount = 1;
 				counters[i].count = 0;
 				counters[i].target &= 0xffff;
 				counters[i].sCycleT = sCycle;
@@ -934,7 +935,7 @@ static __fi void rcntWtarget(int index, u32 value)
 	// overflow first before the target fires:
 
 	if(counters[index].mode.IsCounting) {
-		if(counters[index].mode.ClockSource != 0x3) {
+		if(counters[index].mode.ClockSource != 0x3 && counters[index].gateCount ) {
 
 			u32 change = cpuRegs.cycle - counters[index].sCycleT;
 			if( change > 0 )
@@ -963,7 +964,7 @@ __fi u32 rcntRcount(int index)
 	u32 ret;
 
 	// only count if the counter is turned on (0x80) and is not an hsync gate (!0x03)
-	if (counters[index].mode.IsCounting && (counters[index].mode.ClockSource != 0x3))
+	if (counters[index].mode.IsCounting && counters[index].gateCount && (counters[index].mode.ClockSource != 0x3))
 		ret = counters[index].count + ((cpuRegs.cycle - counters[index].sCycleT) / counters[index].rate);
 	else
 		ret = counters[index].count;
