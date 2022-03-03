@@ -55,32 +55,21 @@ bool rx_fifo_can_rx();
 #define HDD_MIN_GB 40
 #define HDD_MAX_GB 120
 
-struct Config
+struct ConfigHost
 {
-	char Eth[256];
-	NetApi EthApi;
-	bool InterceptDHCP;
-	PacketReader::IP::IP_Address PS2IP;
-	PacketReader::IP::IP_Address Mask;
-	PacketReader::IP::IP_Address Gateway;
-	PacketReader::IP::IP_Address DNS1;
-	PacketReader::IP::IP_Address DNS2;
-	int AutoMask;
-	int AutoGateway;
-	int AutoDNS1;
-	int AutoDNS2;
-#ifdef _WIN32
-	wchar_t Hdd[256];
-#else
-	char Hdd[256];
-#endif
-	int HddSize;
-
-	int hddEnable;
-	int ethEnable;
+	std::string Url;
+	std::string Desc;
+	u8 Address[4];
+	bool Enabled;
 };
 
-EXTERN Config config;
+struct ConfigDEV9
+{
+	std::vector<ConfigHost> EthHosts;
+};
+
+
+EXTERN ConfigDEV9 config;
 
 typedef struct
 {
@@ -144,15 +133,6 @@ EXTERN dev9Struct dev9;
 #define dev9Ru32(mem) (*(u32*)&dev9.dev9R[(mem)&0xffff])
 
 EXTERN int ThreadRun;
-
-//Yes these are meant to be a lowercase extern
-extern std::string s_strIniPath;
-extern std::string s_strLogPath;
-
-#ifdef _WIN32
-//Use own SysMessage for narrow char support
-void SysMessage(char* fmt, ...);
-#endif
 
 #define DEV9_R_REV 0x1f80146e
 
@@ -721,7 +701,7 @@ extern void DEV9configure();
 void FLASHinit();
 s32 DEV9init();
 void DEV9close();
-s32 DEV9open(void* pDsp);
+s32 DEV9open();
 void DEV9shutdown();
 u32 FLASHread32(u32 addr, int size);
 void FLASHwrite32(u32 addr, u32 value, int size);
@@ -736,7 +716,7 @@ u32 DEV9read32(u32 addr);
 void DEV9write8(u32 addr, u8 value);
 void DEV9write16(u32 addr, u16 value);
 void DEV9write32(u32 addr, u32 value);
-void ApplyConfigIfRunning(Config oldConfig);
+void DEV9CheckChanges(const Pcsx2Config& old_config);
 
 #ifdef _WIN32
 #pragma warning(error : 4013)

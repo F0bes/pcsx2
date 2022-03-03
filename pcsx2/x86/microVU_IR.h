@@ -14,6 +14,7 @@
  */
 
 #pragma once
+#include "microVU.h"
 
 union regInfo
 {
@@ -33,7 +34,7 @@ union regInfo
 // vi15 is only used if microVU const-prop is enabled (it is *not* by default).  When constprop
 // is disabled the vi15 field acts as additional padding that is required for 16 byte alignment
 // needed by the xmm compare.
-union __aligned16 microRegInfo
+union alignas(16) microRegInfo
 {
 	struct
 	{
@@ -80,7 +81,7 @@ struct microJumpCache
 	void* x86ptrStart;  // Start of code (Entry point for block)
 };
 
-struct __aligned16 microBlock
+struct alignas(16) microBlock
 {
 	microRegInfo    pState;      // Detailed State of Pipeline
 	microRegInfo    pStateEnd;   // Detailed State of Pipeline at End of Block (needed by JR/JALR opcodes)
@@ -232,6 +233,7 @@ protected:
 	microMapXMM xmmMap[xmmTotal];
 	int         counter; // Current allocation count
 	int         index;   // VU0 or VU1
+	bool        regAllocCOP2;    // Local COP2 check
 
 	// Helper functions to get VU regs
 	VURegs& regs() const { return ::vuRegs[index]; }
@@ -262,6 +264,11 @@ protected:
 
 	int findFreeReg()
 	{
+		if (regAllocCOP2)
+		{
+			return _freeXMMregsCOP2();
+		}
+
 		for (int i = 0; i < xmmTotal; i++)
 		{
 			if (!xmmMap[i].isNeeded && (xmmMap[i].VFreg < 0))
@@ -278,17 +285,18 @@ public:
 	microRegAlloc(int _index)
 	{
 		index = _index;
-		reset();
+		reset(false);
 	}
 
 	// Fully resets the regalloc by clearing all cached data
-	void reset()
+	void reset(bool cop2mode)
 	{
 		for (int i = 0; i < xmmTotal; i++)
 		{
 			clearReg(i);
 		}
 		counter = 0;
+		regAllocCOP2 = cop2mode;
 	}
 
 	int getXmmCount()

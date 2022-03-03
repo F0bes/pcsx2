@@ -15,6 +15,9 @@
 
 #include "PrecompiledHeader.h"
 
+#include "common/RedtapeWindows.h"
+#include "common/StringUtil.h"
+
 #include <stdio.h>
 #include <windows.h>
 #include <winsock2.h>
@@ -26,7 +29,7 @@
 
 #include <tchar.h>
 #include "tap.h"
-#include "..\dev9.h"
+#include "DEV9/DEV9.h"
 #include <string>
 
 #include <wil/com.h>
@@ -106,13 +109,13 @@ bool IsTAPDevice(const TCHAR* guid)
 		{
 			len = sizeof(component_id);
 			status = RegQueryValueEx(unit_key.get(), component_id_string, nullptr, &data_type,
-									 (LPBYTE)component_id, &len);
+				(LPBYTE)component_id, &len);
 
 			if (!(status != ERROR_SUCCESS || data_type != REG_SZ))
 			{
 				len = sizeof(net_cfg_instance_id);
 				status = RegQueryValueEx(unit_key.get(), net_cfg_instance_id_string, nullptr, &data_type,
-										 (LPBYTE)net_cfg_instance_id, &len);
+					(LPBYTE)net_cfg_instance_id, &len);
 
 				if (status == ERROR_SUCCESS && data_type == REG_SZ)
 				{
@@ -138,13 +141,13 @@ std::vector<AdapterEntry> TAPAdapter::GetAdapters()
 
 	wil::unique_hkey control_net_key;
 	LSTATUS status = RegOpenKeyEx(HKEY_LOCAL_MACHINE, NETWORK_CONNECTIONS_KEY, 0, KEY_READ | KEY_QUERY_VALUE,
-						  control_net_key.put());
+		control_net_key.put());
 
 	if (status != ERROR_SUCCESS)
 		return tap_nic;
 
 	status = RegQueryInfoKey(control_net_key.get(), nullptr, nullptr, nullptr, &cSubKeys, nullptr, nullptr,
-							 nullptr, nullptr, nullptr, nullptr, nullptr);
+		nullptr, nullptr, nullptr, nullptr, nullptr);
 
 	if (status != ERROR_SUCCESS)
 		return tap_nic;
@@ -164,7 +167,7 @@ std::vector<AdapterEntry> TAPAdapter::GetAdapters()
 			continue;
 
 		_stprintf_s(connection_string, _T("%s\\%s\\Connection"),
-				   NETWORK_CONNECTIONS_KEY, enum_name);
+			NETWORK_CONNECTIONS_KEY, enum_name);
 
 		wil::unique_hkey connection_key;
 		status = RegOpenKeyEx(HKEY_LOCAL_MACHINE, connection_string, 0, KEY_READ, connection_key.put());
@@ -173,7 +176,7 @@ std::vector<AdapterEntry> TAPAdapter::GetAdapters()
 		{
 			len = sizeof(name_data);
 			status = RegQueryValueEx(connection_key.get(), name_string, nullptr, &name_type, (LPBYTE)name_data,
-									 &len);
+				&len);
 
 			if (status != ERROR_SUCCESS || name_type != REG_SZ)
 			{
@@ -184,9 +187,9 @@ std::vector<AdapterEntry> TAPAdapter::GetAdapters()
 				if (IsTAPDevice(enum_name))
 				{
 					AdapterEntry t;
-					t.type = NetApi::TAP;
-					t.name = std::wstring(name_data);
-					t.guid = std::wstring(enum_name);
+					t.type = Pcsx2Config::DEV9Options::NetApi::TAP;
+					t.name = StringUtil::WideStringToUTF8String(std::wstring(name_data));
+					t.guid = StringUtil::WideStringToUTF8String(std::wstring(enum_name));
 					tap_nic.push_back(t);
 				}
 			}
@@ -201,8 +204,8 @@ static int TAPGetMACAddress(HANDLE handle, u8* addr)
 	DWORD len = 0;
 
 	return DeviceIoControl(handle, TAP_IOCTL_GET_MAC,
-						   addr, 6,
-						   addr, 6, &len, NULL);
+		addr, 6,
+		addr, 6, &len, NULL);
 }
 
 //Set the connection status
@@ -211,14 +214,12 @@ static int TAPSetStatus(HANDLE handle, int status)
 	DWORD len = 0;
 
 	return DeviceIoControl(handle, TAP_IOCTL_SET_MEDIA_STATUS,
-						   &status, sizeof(status),
-						   &status, sizeof(status), &len, NULL);
+		&status, sizeof(status),
+		&status, sizeof(status), &len, NULL);
 }
 //Open the TAP adapter and set the connection to enabled :)
-HANDLE TAPOpen(const char* device_guid)
+HANDLE TAPOpen(const std::string& device_guid)
 {
-	char device_path[256];
-
 	struct
 	{
 		unsigned long major;
@@ -227,13 +228,10 @@ HANDLE TAPOpen(const char* device_guid)
 	} version;
 	LONG version_len;
 
-	sprintf_s(device_path, "%s%s%s",
-			  USERMODEDEVICEDIR,
-			  device_guid,
-			  TAPSUFFIX);
+	std::string device_path = USERMODEDEVICEDIR + device_guid + TAPSUFFIX;
 
 	wil::unique_hfile handle(CreateFileA(
-		device_path,
+		device_path.c_str(),
 		GENERIC_READ | GENERIC_WRITE,
 		0,
 		0,
@@ -247,8 +245,8 @@ HANDLE TAPOpen(const char* device_guid)
 	}
 
 	BOOL bret = DeviceIoControl(handle.get(), TAP_IOCTL_GET_VERSION,
-								&version, sizeof(version),
-								&version, sizeof(version), (LPDWORD)&version_len, NULL);
+		&version, sizeof(version),
+		&version, sizeof(version), (LPDWORD)&version_len, NULL);
 
 	if (bret == FALSE)
 	{
@@ -279,7 +277,7 @@ PIP_ADAPTER_ADDRESSES FindAdapterViaIndex(PIP_ADAPTER_ADDRESSES adapterList, int
 //IP_ADAPTER_ADDRESSES is a structure that contains ptrs to data in other regions
 //of the buffer, se we need to return both so the caller can free the buffer
 //after it's finished reading the needed data from IP_ADAPTER_ADDRESSES
-bool TAPGetWin32Adapter(const char* name, PIP_ADAPTER_ADDRESSES adapter, std::unique_ptr<IP_ADAPTER_ADDRESSES[]>* buffer)
+bool TAPGetWin32Adapter(const std::string& name, PIP_ADAPTER_ADDRESSES adapter, std::unique_ptr<IP_ADAPTER_ADDRESSES[]>* buffer)
 {
 	int neededSize = 256;
 	std::unique_ptr<IP_ADAPTER_ADDRESSES[]> AdapterInfo = std::make_unique<IP_ADAPTER_ADDRESSES[]>(neededSize);
@@ -319,7 +317,7 @@ bool TAPGetWin32Adapter(const char* name, PIP_ADAPTER_ADDRESSES adapter, std::un
 
 	do
 	{
-		if (0 == strcmp(pAdapterInfo->AdapterName, name))
+		if (0 == strcmp(pAdapterInfo->AdapterName, name.c_str()))
 			break;
 
 		pAdapterInfo = pAdapterInfo->Next;
@@ -419,7 +417,9 @@ bool TAPGetWin32Adapter(const char* name, PIP_ADAPTER_ADDRESSES adapter, std::un
 
 	//Step 2
 	//Init COM
-	const HRESULT cohr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+	HRESULT cohr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+	if (cohr == RPC_E_CHANGED_MODE)
+		cohr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 	if (!SUCCEEDED(cohr))
 		return false;
 
@@ -516,8 +516,7 @@ bool TAPGetWin32Adapter(const char* name, PIP_ADAPTER_ADDRESSES adapter, std::un
 		}
 	}
 
-	if (cohr == S_OK)
-		CoUninitialize();
+	CoUninitialize();
 
 	if (bridgeAdapter != nullptr)
 	{
@@ -532,9 +531,9 @@ bool TAPGetWin32Adapter(const char* name, PIP_ADAPTER_ADDRESSES adapter, std::un
 TAPAdapter::TAPAdapter()
 	: NetAdapter()
 {
-	if (config.ethEnable == 0)
+	if (!EmuConfig.DEV9.EthEnable)
 		return;
-	htap = TAPOpen(config.Eth);
+	htap = TAPOpen(EmuConfig.DEV9.EthDevice);
 
 	read.Offset = 0;
 	read.OffsetHigh = 0;
@@ -560,10 +559,13 @@ TAPAdapter::TAPAdapter()
 
 	IP_ADAPTER_ADDRESSES adapter;
 	std::unique_ptr<IP_ADAPTER_ADDRESSES[]> buffer;
-	if (TAPGetWin32Adapter(config.Eth, &adapter, &buffer))
+	if (TAPGetWin32Adapter(EmuConfig.DEV9.EthDevice, &adapter, &buffer))
 		InitInternalServer(&adapter);
 	else
+	{
+		Console.Error("DEV9: Failed to get adapter information");
 		InitInternalServer(nullptr);
+	}
 
 	isActive = true;
 }
@@ -581,10 +583,10 @@ bool TAPAdapter::recv(NetPacket* pkt)
 {
 	DWORD read_size;
 	BOOL result = ReadFile(htap,
-						   pkt->buffer,
-						   sizeof(pkt->buffer),
-						   &read_size,
-						   &read);
+		pkt->buffer,
+		sizeof(pkt->buffer),
+		&read_size,
+		&read);
 
 	if (!result)
 	{
@@ -605,23 +607,27 @@ bool TAPAdapter::recv(NetPacket* pkt)
 		}
 	}
 
-	if (result)
-		return VerifyPkt(pkt, read_size);
+	if (result && VerifyPkt(pkt, read_size))
+	{
+		InspectRecv(pkt);
+		return true;
+	}
 	else
 		return false;
 }
 //sends the packet .rv :true success
 bool TAPAdapter::send(NetPacket* pkt)
 {
+	InspectSend(pkt);
 	if (NetAdapter::send(pkt))
 		return true;
 
 	DWORD writen;
 	BOOL result = WriteFile(htap,
-							pkt->buffer,
-							pkt->size,
-							&writen,
-							&write);
+		pkt->buffer,
+		pkt->size,
+		&writen,
+		&write);
 
 	if (!result)
 	{
@@ -648,7 +654,7 @@ void TAPAdapter::reloadSettings()
 {
 	IP_ADAPTER_ADDRESSES adapter;
 	std::unique_ptr<IP_ADAPTER_ADDRESSES[]> buffer;
-	if (TAPGetWin32Adapter(config.Eth, &adapter, &buffer))
+	if (TAPGetWin32Adapter(EmuConfig.DEV9.EthDevice, &adapter, &buffer))
 		ReloadInternalServer(&adapter);
 	else
 		ReloadInternalServer(nullptr);

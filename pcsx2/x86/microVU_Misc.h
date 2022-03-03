@@ -39,7 +39,7 @@ struct mVU_Globals
 };
 
 #define __four(val) { val, val, val, val }
-static const __aligned(32) mVU_Globals mVUglob = {
+alignas(32) static const mVU_Globals mVUglob = {
 	__four(0x7fffffff),       // absclip
 	__four(0x80000000),       // signbit
 	__four(0xff7fffff),       // minvals
@@ -105,7 +105,16 @@ static const char branchSTR[16][8] = {
 #define _Z ((mVU.code >> 22) & 0x1)
 #define _W ((mVU.code >> 21) & 0x1)
 
+#define _cX ((cpuRegs.code >> 24) & 0x1)
+#define _cY ((cpuRegs.code >> 23) & 0x1)
+#define _cZ ((cpuRegs.code >> 22) & 0x1)
+#define _cW ((cpuRegs.code >> 21) & 0x1)
+
 #define _X_Y_Z_W   (((mVU.code >> 21) & 0xF))
+#define _cX_Y_Z_W   (((cpuRegs.code >> 21) & 0xF))
+#define _cXYZW_SS  (_cX + _cY + _cZ + _cW == 1)
+#define _cXYZW_SS2  (_cXYZW_SS && (_cX_Y_Z_W != 8))
+
 #define _XYZW_SS   (_X + _Y + _Z + _W == 1)
 #define _XYZW_SS2  (_XYZW_SS && (_X_Y_Z_W != 8))
 #define _XYZW_PS   (_X_Y_Z_W == 0xf)
@@ -199,7 +208,7 @@ typedef Fntype_mVUrecInst* Fnptr_mVUrecInst;
 //------------------------------------------------------------------
 // Define mVUquickSearch
 //------------------------------------------------------------------
-extern __pagealigned u8 mVUsearchXMM[__pagesize];
+alignas(__pagesize) extern u8 mVUsearchXMM[__pagesize];
 typedef u32(__fastcall* mVUCall)(void*, void*);
 #define mVUquickSearch(dest, src, size) ((((mVUCall)((void*)mVUsearchXMM))(dest, src)) == 0xf)
 #define mVUemitSearch() \
@@ -233,6 +242,7 @@ typedef u32(__fastcall* mVUCall)(void*, void*);
 #define mVUrange     (mVUcurProg.ranges[0])[0]
 #define isEvilBlock  (mVUpBlock->pState.blockType == 2)
 #define isBadOrEvil  (mVUlow.badBranch || mVUlow.evilBranch)
+#define isConditional (mVUlow.branch > 2 && mVUlow.branch < 9)
 #define xPC          ((iPC / 2) * 8)
 #define curI         ((u32*)mVU.regs().Micro)[iPC] //mVUcurProg.data[iPC]
 #define setCode()    { mVU.code = curI; }

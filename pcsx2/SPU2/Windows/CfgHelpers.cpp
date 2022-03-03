@@ -14,13 +14,11 @@
  */
 
 #include "PrecompiledHeader.h"
-#include "gui/AppConfig.h"
+#include "Config.h"
 #include "SPU2/Global.h"
 #include "Dialogs.h"
 
 #include "common/StringHelpers.h"
-
-extern uptr gsWindowHandle;
 
 void SysMessage(const char* fmt, ...)
 {
@@ -32,8 +30,9 @@ void SysMessage(const char* fmt, ...)
 	vsprintf_s(tmp, fmt, list);
 	va_end(list);
 	swprintf_s(wtmp, L"%S", tmp);
-	MessageBox((!!gsWindowHandle) ? (HWND)gsWindowHandle : GetActiveWindow(), wtmp,
-			   L"SPU2 System Message", MB_OK | MB_SETFOREGROUND);
+
+	// TODO: Move this into app/host.
+	MessageBox(NULL, wtmp, L"SPU2 System Message", MB_OK | MB_SETFOREGROUND);
 }
 
 void SysMessage(const wchar_t* fmt, ...)
@@ -43,8 +42,7 @@ void SysMessage(const wchar_t* fmt, ...)
 	wxString wtmp;
 	wtmp.PrintfV(fmt, list);
 	va_end(list);
-	MessageBox((!!gsWindowHandle) ? (HWND)gsWindowHandle : GetActiveWindow(), wtmp,
-			   L"SPU2 System Message", MB_OK | MB_SETFOREGROUND);
+	MessageBox(NULL, wtmp, L"SPU2 System Message", MB_OK | MB_SETFOREGROUND);
 }
 
 //////
@@ -58,7 +56,7 @@ void initIni()
 {
 	if (!pathSet)
 	{
-		CfgFile = GetSettingsFolder().Combine(CfgFile).GetFullPath();
+		CfgFile = EmuFolders::Settings.Combine(CfgFile).GetFullPath();
 		pathSet = true;
 	}
 }
@@ -195,7 +193,7 @@ void CfgReadStr(const TCHAR* Section, const TCHAR* Name, wxString& Data, const T
 {
 	initIni();
 	wchar_t workspace[512];
-	GetPrivateProfileString(Section, Name, L"", workspace, ArraySize(workspace), CfgFile);
+	GetPrivateProfileString(Section, Name, L"", workspace, std::size(workspace), CfgFile);
 
 	Data = workspace;
 

@@ -137,7 +137,7 @@ namespace x86Emitter
 		{
 			_g1_EmitOp(G1Type_XOR, to_, to_);
 		}
-		else if (imm == (u32)imm || !to.IsWide())
+		else if (imm == (sptr)(u32)imm || !to.IsWide())
 		{
 			// Note: MOV does not have (reg16/32,imm8) forms.
 			u8 opcode = (to_.Is8BitOp() ? 0xb0 : 0xb8) | to_.Id;
@@ -241,18 +241,20 @@ namespace x86Emitter
 		xOpWrite0F(SignExtend ? 0xbf : 0xb7, to, sibsrc);
 	}
 
-#if 0
-void xImpl_MovExtend::operator()( const xRegister32& to, const xDirectOrIndirect16& src ) const
-{
-	EbpAssert();
-	_DoI_helpermess( *this, to, src );
-}
+#ifdef __M_X86_64
+	void xImpl_MovExtend::operator()(const xRegister64& to, const xRegister32& from) const
+	{
+		EbpAssert();
+		pxAssertMsg(SignExtend, "Use mov for 64-bit movzx");
+		xOpWrite(0, 0x63, to, from);
+	}
 
-void xImpl_MovExtend::operator()( const xRegister16or32& to, const xDirectOrIndirect8& src ) const
-{
-	EbpAssert();
-	_DoI_helpermess( *this, to, src );
-}
+	void xImpl_MovExtend::operator()(const xRegister64& to, const xIndirect32& sibsrc) const
+	{
+		EbpAssert();
+		pxAssertMsg(SignExtend, "Use mov for 64-bit movzx");
+		xOpWrite(0, 0x63, to, sibsrc);
+	}
 #endif
 
 	const xImpl_MovExtend xMOVSX = {true};

@@ -20,7 +20,7 @@
 #ifdef PCSX2_DEVBUILD
 static const int LATENCY_MAX = 3000;
 #else
-static const int LATENCY_MAX = 750;
+static const int LATENCY_MAX = 200;
 #endif
 
 static const int LATENCY_MIN = 3;
@@ -126,8 +126,6 @@ void ReadSettings()
 	dspPluginModule = CfgReadInt(L"DSP PLUGIN", L"ModuleNum", 0);
 	dspPluginEnabled = CfgReadBool(L"DSP PLUGIN", L"Enabled", false);
 
-	PortaudioOut->ReadSettings();
-
 	SoundtouchCfg::ReadSettings();
 	DebugConfig::ReadSettings();
 
@@ -151,7 +149,7 @@ void WriteSettings()
 {
 	CfgWriteInt(L"MIXING", L"Interpolation", Interpolation);
 
-	CfgWriteInt(L"MIXING", L"FinalVolume", (int)(FinalVolume * 100 + 0.5f));
+	CfgWriteInt(L"MIXING", L"FinalVolume", (int)(FinalVolume * 100));
 
 	CfgWriteBool(L"MIXING", L"AdvancedVolumeControl", AdvancedVolumeControl);
 	CfgWriteFloat(L"MIXING", L"VolumeAdjustC(dB)", VolumeAdjustCdb);
@@ -173,7 +171,6 @@ void WriteSettings()
 	CfgWriteInt(L"DSP PLUGIN", L"ModuleNum", dspPluginModule);
 	CfgWriteBool(L"DSP PLUGIN", L"Enabled", dspPluginEnabled);
 
-	PortaudioOut->WriteSettings();
 	SoundtouchCfg::WriteSettings();
 	DebugConfig::WriteSettings();
 }
@@ -181,14 +178,129 @@ void WriteSettings()
 void CheckOutputModule(HWND window)
 {
 	OutputModule = SendMessage(GetDlgItem(window, IDC_OUTPUT), CB_GETCURSEL, 0, 0);
-	const bool IsConfigurable = mods[OutputModule] == PortaudioOut;
+	const bool IsConfigurable = mods[OutputModule] == CubebOut;
 	const bool AudioExpansion =
 		mods[OutputModule] == XAudio2Out ||
-		mods[OutputModule] == PortaudioOut;
+		mods[OutputModule] == CubebOut;
 
 	EnableWindow(GetDlgItem(window, IDC_OUTCONF), IsConfigurable);
 	EnableWindow(GetDlgItem(window, IDC_SPEAKERS), AudioExpansion);
 	EnableWindow(GetDlgItem(window, IDC_SPEAKERS_TEXT), AudioExpansion);
+}
+
+static BOOL CALLBACK CubebConfigProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	switch (uMsg)
+	{
+		case WM_INITDIALOG:
+		{
+			static constexpr wchar_t* cubeb_backend_names[][2] = {
+				{L"Unspecified", L""},
+				{L"WASAPI", L"wasapi"},
+				{L"WinMM", L"winmm"}};
+
+			const bool minimalLatency = CfgReadBool(L"Cubeb", L"MinimalSuggestedLatency", false);
+			const int suggestedLatencyMS = CfgReadInt(L"Cubeb", L"ManualSuggestedLatencyMS", 20);
+			wxString backend;
+			CfgReadStr(L"Cubeb", L"BackendName", backend, L"");
+
+			SendMessage(GetDlgItem(hWnd, IDC_BACKEND), CB_RESETCONTENT, 0, 0);
+
+			for (size_t i = 0; i < std::size(cubeb_backend_names); i++)
+			{
+				SendMessageW(GetDlgItem(hWnd, IDC_BACKEND), CB_ADDSTRING, (WPARAM)i, (LPARAM)cubeb_backend_names[i][0]);
+				SendMessageW(GetDlgItem(hWnd, IDC_BACKEND), CB_SETITEMDATA, (WPARAM)i, (LPARAM)cubeb_backend_names[i][1]);
+				if (backend == cubeb_backend_names[i][1])
+					SendMessage(GetDlgItem(hWnd, IDC_BACKEND), CB_SETCURSEL, (WPARAM)i, 0);
+			}
+
+			INIT_SLIDER(IDC_LATENCY, 10, 200, 10, 1, 1);
+			SendMessage(GetDlgItem(hWnd, IDC_LATENCY), TBM_SETPOS, TRUE, suggestedLatencyMS);
+
+			wchar_t temp[128];
+			swprintf_s(temp, L"%d ms", suggestedLatencyMS);
+			SetWindowText(GetDlgItem(hWnd, IDC_LATENCY_LABEL), temp);
+
+			if (minimalLatency)
+				SET_CHECK(IDC_MINIMIZE, true);
+			else
+				SET_CHECK(IDC_MANUAL, true);
+
+			return TRUE;
+		}
+		break;
+
+		case WM_COMMAND:
+		{
+			const DWORD wmId = LOWORD(wParam);
+			const DWORD wmEvent = HIWORD(wParam);
+			// Parse the menu selections:
+			switch (wmId)
+			{
+				case IDOK:
+				{
+					int idx = (int)SendMessage(GetDlgItem(hWnd, IDC_BACKEND), CB_GETCURSEL, 0, 0);
+					const wchar_t* backend = (const wchar_t*)SendMessage(GetDlgItem(hWnd, IDC_BACKEND), CB_GETITEMDATA, idx, 0);
+					CfgWriteStr(L"Cubeb", L"BackendName", backend);
+
+					const int suggestedLatencyMS = (int)SendMessage(GetDlgItem(hWnd, IDC_LATENCY), TBM_GETPOS, 0, 0);
+					const bool minimalLatency = SendMessage(GetDlgItem(hWnd, IDC_MINIMIZE), BM_GETCHECK, 0, 0) == BST_CHECKED;
+					CfgWriteBool(L"Cubeb", L"MinimalSuggestedLatency", minimalLatency);
+					CfgWriteInt(L"Cubeb", L"ManualSuggestedLatencyMS", suggestedLatencyMS);
+
+					EndDialog(hWnd, 0);
+					return TRUE;
+				}
+				break;
+
+				case IDCANCEL:
+					EndDialog(hWnd, 0);
+					return TRUE;
+
+				default:
+					return FALSE;
+			}
+		}
+		break;
+
+		case WM_HSCROLL:
+		{
+			const DWORD wmId = LOWORD(wParam);
+			DWORD wmEvent = HIWORD(wParam);
+			switch (wmId)
+			{
+				case TB_LINEUP:
+				case TB_LINEDOWN:
+				case TB_PAGEUP:
+				case TB_PAGEDOWN:
+				case TB_TOP:
+				case TB_BOTTOM:
+					wmEvent = (int)SendMessage((HWND)lParam, TBM_GETPOS, 0, 0);
+				case TB_THUMBPOSITION:
+				case TB_THUMBTRACK:
+				{
+					wchar_t temp[128];
+					if (wmEvent < 10)
+						wmEvent = 10;
+					if (wmEvent > 200)
+						wmEvent = 200;
+					SendMessage((HWND)lParam, TBM_SETPOS, TRUE, wmEvent);
+					swprintf_s(temp, L"%d ms", wmEvent);
+					SetWindowText(GetDlgItem(hWnd, IDC_LATENCY_LABEL), temp);
+					break;
+				}
+				default:
+					return FALSE;
+			}
+
+			return TRUE;
+		}
+		break;
+
+		default:
+			return FALSE;
+	}
+	return FALSE;
 }
 
 BOOL CALLBACK ConfigProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -236,16 +348,16 @@ BOOL CALLBACK ConfigProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			}
 			SendDialogMsg(hWnd, IDC_OUTPUT, CB_SETCURSEL, OutputModule, 0);
 
-			double minlat = (SynchMode == 0) ? LATENCY_MIN_TS : LATENCY_MIN;
+			float minlat = (SynchMode == 0) ? LATENCY_MIN_TS : LATENCY_MIN;
 			int minexp = (int)(pow(minlat + 1, 1.0 / 3.0) * 128.0);
-			int maxexp = (int)(pow((double)LATENCY_MAX + 2, 1.0 / 3.0) * 128.0);
-			INIT_SLIDER(IDC_LATENCY_SLIDER, minexp, maxexp, 200, 13, 15);
+			int maxexp = (int)(pow((float)LATENCY_MAX + 1, 1.0 / 3.0) * 128.0);
+			INIT_SLIDER(IDC_LATENCY_SLIDER, minexp, maxexp, 54, 10, 11);
 
-			SendDialogMsg(hWnd, IDC_LATENCY_SLIDER, TBM_SETPOS, TRUE, (int)((pow((double)SndOutLatencyMS, 1.0 / 3.0) * 128.0) + 1));
+			SendDialogMsg(hWnd, IDC_LATENCY_SLIDER, TBM_SETPOS, TRUE, (int)((pow((float)SndOutLatencyMS, 1.0 / 3.0) * 128.0) + 1));
 			swprintf_s(temp, L"%d ms (avg)", SndOutLatencyMS);
 			SetWindowText(GetDlgItem(hWnd, IDC_LATENCY_LABEL), temp);
 
-			int configvol = (int)(FinalVolume * 100 + 0.5f);
+			int configvol = (int)(FinalVolume * 100);
 			INIT_SLIDER(IDC_VOLUME_SLIDER, 0, 100, 10, 5, 1);
 
 			SendDialogMsg(hWnd, IDC_VOLUME_SLIDER, TBM_SETPOS, TRUE, configvol);
@@ -270,7 +382,7 @@ BOOL CALLBACK ConfigProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			{
 				case IDOK:
 				{
-					double res = ((int)SendDialogMsg(hWnd, IDC_LATENCY_SLIDER, TBM_GETPOS, 0, 0)) / 128.0;
+					float res = ((int)SendDialogMsg(hWnd, IDC_LATENCY_SLIDER, TBM_GETPOS, 0, 0)) / 128.0;
 					SndOutLatencyMS = (int)pow(res, 3.0);
 					Clampify(SndOutLatencyMS, LATENCY_MIN, LATENCY_MAX);
 					FinalVolume = (float)(SendDialogMsg(hWnd, IDC_VOLUME_SLIDER, TBM_GETPOS, 0, 0)) / 100;
@@ -298,9 +410,11 @@ BOOL CALLBACK ConfigProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				case IDC_OUTCONF:
 				{
 					const int module = (int)SendMessage(GetDlgItem(hWnd, IDC_OUTPUT), CB_GETCURSEL, 0, 0);
-					if (mods[module] == nullptr)
+					if (mods[module] != CubebOut)
 						break;
-					mods[module]->Configure((uptr)hWnd);
+
+					if (DialogBoxParam(nullptr, MAKEINTRESOURCE(IDD_CUBEB), hWnd, (DLGPROC)CubebConfigProc, 1) == -1)
+						MessageBox(hWnd, L"Error Opening the config dialog.", L"Error", MB_OK | MB_SETFOREGROUND);
 				}
 				break;
 
@@ -320,13 +434,13 @@ BOOL CALLBACK ConfigProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					if (wmEvent == CBN_SELCHANGE)
 					{
 						int sMode = (int)SendDialogMsg(hWnd, IDC_SYNCHMODE, CB_GETCURSEL, 0, 0);
-						double minlat = (sMode == 0) ? LATENCY_MIN_TS : LATENCY_MIN;
+						float minlat = (sMode == 0) ? LATENCY_MIN_TS : LATENCY_MIN;
 						int minexp = (int)(pow(minlat + 1, 1.0 / 3.0) * 128.0);
-						int maxexp = (int)(pow((double)LATENCY_MAX + 2, 1.0 / 3.0) * 128.0);
-						INIT_SLIDER(IDC_LATENCY_SLIDER, minexp, maxexp, 200, 42, 1);
+						int maxexp = (int)(pow((float)LATENCY_MAX + 1, 1.0 / 3.0) * 128.0);
+						INIT_SLIDER(IDC_LATENCY_SLIDER, minexp, maxexp, 54, 10, 11);
 
 						int curpos = (int)SendMessage(GetDlgItem(hWnd, IDC_LATENCY_SLIDER), TBM_GETPOS, 0, 0);
-						double res = pow(curpos / 128.0, 3.0);
+						float res = pow(curpos / 128.0, 3.0);
 						curpos = (int)res;
 						swprintf_s(temp, L"%d ms (avg)", curpos);
 						SetDlgItemText(hWnd, IDC_LATENCY_LABEL, temp);
@@ -379,7 +493,7 @@ BOOL CALLBACK ConfigProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 					if (hwndDlg == GetDlgItem(hWnd, IDC_LATENCY_SLIDER))
 					{
-						double res = pow(curpos / 128.0, 3.0);
+						float res = pow(curpos / 128.0, 3.0);
 						curpos = (int)res;
 						swprintf_s(temp, L"%d ms (avg)", curpos);
 						SetDlgItemText(hWnd, IDC_LATENCY_LABEL, temp);

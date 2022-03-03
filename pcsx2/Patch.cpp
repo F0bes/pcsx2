@@ -1,5 +1,5 @@
 /*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2010  PCSX2 Dev Team
+ *  Copyright (C) 2002-2021  PCSX2 Dev Team
  *
  *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU Lesser General Public License as published by the Free Software Found-
@@ -17,8 +17,10 @@
 
 #define _PC_ // disables MIPS opcode macros.
 
+#include "common/StringUtil.h"
 #include "IopCommon.h"
 #include "Patch.h"
+#include "Config.h"
 
 #include <memory>
 #include <vector>
@@ -27,7 +29,7 @@
 #include <wx/txtstrm.h>
 #include <wx/zipstrm.h>
 #include <wx/wfstream.h>
-#include <PathDefs.h>
+#include "PathDefs.h"
 
 // This is a declaration for PatchMemory.cpp::_ApplyPatch where we're (patch.cpp)
 // the only consumer, so it's not made public via Patch.h
@@ -35,9 +37,8 @@
 extern void _ApplyPatch(IniPatch* p);
 
 
-std::vector<IniPatch> Patch;
+static std::vector<IniPatch> Patch;
 
-wxString strgametitle;
 
 struct PatchTextTable
 {
@@ -128,19 +129,13 @@ static void inifile_command(const wxString& cmd)
 
 // This routine loads patches from the game database (but not the config/game fixes/hacks)
 // Returns number of patches loaded
-int LoadPatchesFromGamesDB(const wxString& crc, const GameDatabaseSchema::GameEntry& game)
+int LoadPatchesFromGamesDB(const std::string& crc, const GameDatabaseSchema::GameEntry& game)
 {
-	if (game.isValid)
+	const GameDatabaseSchema::Patch* patch = game.findPatch(crc);
+	if (patch)
 	{
-		GameDatabaseSchema::Patch patch;
-		bool patchFound = game.findPatch(std::string(crc), patch);
-		if (patchFound && patch.patchLines.size() > 0)
-		{
-			for (auto line : patch.patchLines)
-			{
-				inifile_command(line);
-			}
-		}
+		for (const std::string& line : *patch)
+			inifile_command(StringUtil::UTF8StringToWxString(line));
 	}
 
 	return Patch.size();
@@ -208,20 +203,19 @@ static int _LoadPatchFiles(const wxDirName& folderName, wxString& fileSpec, cons
 // Returns number of patches loaded
 // Note: does not reset previously loaded patches (use ForgetLoadedPatches() for that)
 // Note: only load patches from the root folder of the zip
-int LoadPatchesFromZip(wxString gameCRC, const wxString& patchesArchiveFilename)
+int LoadPatchesFromZip(const wxString& gameCRC, const wxString& patchesArchiveFilename, wxInputStream* stream)
 {
-	gameCRC.MakeUpper();
+	wxString upperGameCRC(gameCRC.Upper());
 
 	int before = Patch.size();
 
 	std::unique_ptr<wxZipEntry> entry;
-	wxFFileInputStream in(patchesArchiveFilename);
-	wxZipInputStream zip(in);
+	wxZipInputStream zip(stream);
 	while (entry.reset(zip.GetNextEntry()), entry.get() != NULL)
 	{
 		wxString name = entry->GetName();
 		name.MakeUpper();
-		if (name.Find(gameCRC) == 0 && name.Find(L".PNACH") + 6u == name.Length())
+		if (name.Find(upperGameCRC) == 0 && name.Find(L".PNACH") + 6u == name.Length())
 		{
 			PatchesCon->WriteLn(Color_Green, L"Loading patch '%s' from archive '%s'",
 								WX_STR(entry->GetName()), WX_STR(patchesArchiveFilename));
@@ -239,7 +233,7 @@ int LoadPatchesFromZip(wxString gameCRC, const wxString& patchesArchiveFilename)
 // This routine loads patches from *.pnach files
 // Returns number of patches loaded
 // Note: does not reset previously loaded patches (use ForgetLoadedPatches() for that)
-int LoadPatchesFromDir(wxString name, const wxDirName& folderName, const wxString& friendlyName)
+int LoadPatchesFromDir(const wxString& name, const wxDirName& folderName, const wxString& friendlyName)
 {
 	int loaded = 0;
 	int numberFoundPatchFiles;
@@ -247,12 +241,9 @@ int LoadPatchesFromDir(wxString name, const wxDirName& folderName, const wxStrin
 	wxString filespec = name + L"*.pnach";
 	loaded += _LoadPatchFiles(folderName, filespec, friendlyName, numberFoundPatchFiles);
 
-	// This comment _might_ be buggy. This function (LoadPatchesFromDir) loads from an explicit folder.
-	// This folder can be cheats or cheats_ws at either the default location or a custom one.
-	// This check only tests the default cheats folder, so the message it produces is possibly misleading.
-	if (folderName.ToString().IsSameAs(PathDefs::GetCheats().ToString()) && numberFoundPatchFiles == 0)
+	if (folderName.ToString().IsSameAs(EmuFolders::Cheats.ToString()) && numberFoundPatchFiles == 0)
 	{
-		wxString pathName = Path::Combine(folderName, name.MakeUpper() + L".pnach");
+		wxString pathName = Path::Combine(folderName, name.Upper() + L".pnach");
 		PatchesCon->WriteLn(Color_Gray, L"Not found %s file: %s", WX_STR(friendlyName), WX_STR(pathName));
 	}
 

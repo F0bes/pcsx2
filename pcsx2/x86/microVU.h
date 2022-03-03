@@ -205,14 +205,14 @@ static const uint mVUcacheReserve = 64; // mVU0, mVU1 Reserve Cache Size (in meg
 struct microVU
 {
 
-	__aligned16 u32 statFlag[4]; // 4 instances of status flag (backup for xgkick)
-	__aligned16 u32 macFlag [4]; // 4 instances of mac    flag (used in execution)
-	__aligned16 u32 clipFlag[4]; // 4 instances of clip   flag (used in execution)
-	__aligned16 u32 xmmCTemp[4];     // Backup used in mVUclamp2()
+	alignas(16) u32 statFlag[4]; // 4 instances of status flag (backup for xgkick)
+	alignas(16) u32 macFlag [4]; // 4 instances of mac    flag (used in execution)
+	alignas(16) u32 clipFlag[4]; // 4 instances of clip   flag (used in execution)
+	alignas(16) u32 xmmCTemp[4];     // Backup used in mVUclamp2()
 #ifdef __M_X86_64
-	__aligned16 u32 xmmBackup[16][4]; // Backup for xmm0~xmm15
+	alignas(16) u32 xmmBackup[16][4]; // Backup for xmm0~xmm15
 #else
-	__aligned16 u32 xmmBackup[8][4]; // Backup for xmm0~xmm7
+	alignas(16) u32 xmmBackup[8][4]; // Backup for xmm0~xmm7
 #endif
 
 	u32 index;        // VU Index (VU0 or VU1)
@@ -243,6 +243,7 @@ struct microVU
 	u32 branch;       // Holds branch compare result (IBxx) OR Holds address to Jump to (JALR/JR)
 	u32 badBranch;    // For Branches in Branch Delay Slots, holds Address the first Branch went to + 8
 	u32 evilBranch;   // For Branches in Branch Delay Slots, holds Address to Jump to
+	u32 evilevilBranch;// For Branches in Branch Delay Slots (chained), holds Address to Jump to
 	u32 p;            // Holds current P instance index
 	u32 q;            // Holds current Q instance index
 	u32 totalCycles;  // Total Cycles that mVU is expected to run for
@@ -259,8 +260,8 @@ struct microVU
 };
 
 // microVU rec structs
-__aligned16 microVU microVU0;
-__aligned16 microVU microVU1;
+alignas(16) microVU microVU0;
+alignas(16) microVU microVU1;
 
 // Debug Helper
 int mVUdebugNow = 0;

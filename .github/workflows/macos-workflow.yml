@@ -66,7 +66,7 @@ jobs:
       # Prevent one build from failing everything (although maybe those should be included as experimental builds instead)
       fail-fast: false
       matrix:
-        os: [macos-10.15]
+        os: [macos-11.0]
         platform: [x64]
         experimental: [false]
 
@@ -99,7 +99,7 @@ jobs:
         run: |
           # To save time, only brew update if running the install without it fails
           function do-install() {
-            brew install sound-touch portaudio wxmac gtk+3 sdl2 libsamplerate
+            brew install sound-touch portaudio wxwidgets sdl2 libsamplerate
           }
           if ! do-install; then
             brew update
@@ -107,7 +107,7 @@ jobs:
           fi
 
       - name: Generate CMake Files
-        run: cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_BUILD_PO=FALSE -B build .
+        run: cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_BUILD_PO=FALSE -DLTO_PCSX2_CORE=ON -B build .
 
       - name: Build PCSX2
         working-directory: build

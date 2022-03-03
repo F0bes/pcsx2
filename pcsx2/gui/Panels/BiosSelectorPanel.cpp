@@ -17,6 +17,7 @@
 #include "gui/App.h"
 #include "ConfigurationPanels.h"
 
+#include "common/StringUtil.h"
 #include "ps2/BiosTools.h"
 
 #include <wx/dir.h>
@@ -137,7 +138,7 @@ void Panels::BiosSelectorPanel::Apply()
 			.SetUserMsg(pxE(L"Please select a valid BIOS.  If you are unable to make a valid selection then press Cancel to close the Configuration panel."));
 	}
 
-	g_Conf->BaseFilenames.Bios = (*m_BiosList)[(sptr)m_ComboBox->GetClientData(sel)];
+	g_Conf->EmuOptions.BaseFilenames.Bios = StringUtil::wxStringToUTF8String(wxFileName((*m_BiosList)[(sptr)m_ComboBox->GetClientData(sel)]).GetFullName());
 }
 
 void Panels::BiosSelectorPanel::AppStatusEvent_OnSettingsApplied()
@@ -169,12 +170,13 @@ bool Panels::BiosSelectorPanel::ValidateEnumerationStatus()
 
 void Panels::BiosSelectorPanel::EnumThread::ExecuteTaskInThread()
 {
+	u32 region, version;
+	std::string description, zone;
 	for (size_t i = 0; i < m_parent.m_BiosList->GetCount(); ++i)
 	{
-		wxString description;
-		if (!IsBIOS((*m_parent.m_BiosList)[i], description))
+		if (!IsBIOS((*m_parent.m_BiosList)[i].ToUTF8().data(), version, description, region, zone))
 			continue;
-		Result.emplace_back(std::move(description), i);
+		Result.emplace_back(StringUtil::UTF8StringToWxString(description), i);
 	}
 
 	wxCommandEvent done(pxEvt_BiosEnumerationFinished);
@@ -203,13 +205,13 @@ void Panels::BiosSelectorPanel::OnEnumComplete(wxCommandEvent& evt)
 	if (m_EnumeratorThread.get() != enumThread || m_BiosList->size() < enumThread->Result.size())
 		return;
 
-	const wxFileName& currentBios = g_Conf->FullpathToBios();
+	const wxString currentBios(StringUtil::UTF8StringToWxString(g_Conf->EmuOptions.FullpathToBios()));
 	m_ComboBox->Clear(); // Clear the "Enumerating BIOSes..."
 
 	for (const std::pair<wxString, u32>& result : enumThread->Result)
 	{
-		const int sel = m_ComboBox->Append(result.first, reinterpret_cast<void*>(result.second));
-		if (currentBios == wxFileName((*m_BiosList)[result.second]))
+		const int sel = m_ComboBox->Append(result.first, reinterpret_cast<void*>(static_cast<uintptr_t>(result.second)));
+		if (currentBios == (*m_BiosList)[result.second])
 			m_ComboBox->SetSelection(sel);
 	}
 	// Select a bios if one isn't selected. 

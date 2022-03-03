@@ -15,8 +15,6 @@
 
 #pragma once
 
-#include "GS_types.h"
-
 class GSPerfMon
 {
 public:
@@ -24,47 +22,62 @@ public:
 	{
 		Main,
 		Sync,
-		WorkerDraw0, WorkerDraw1, WorkerDraw2, WorkerDraw3, WorkerDraw4, WorkerDraw5, WorkerDraw6, WorkerDraw7,
-		WorkerDraw8, WorkerDraw9, WorkerDraw10, WorkerDraw11, WorkerDraw12, WorkerDraw13, WorkerDraw14, WorkerDraw15,
-		TimerLast,
+		WorkerDraw0,
+		TimerLast = WorkerDraw0 + 32, // Enough space for 32 GS worker threads
 	};
 
 	enum counter_t
 	{
-		Frame,
 		Prim,
 		Draw,
+		DrawCalls,
+		Readbacks,
 		Swizzle,
 		Unswizzle,
 		Fillrate,
 		Quad,
 		SyncPoint,
 		CounterLast,
+
+		// Reused counters for HW.
+		TextureCopies = Fillrate,
+		TextureUploads = SyncPoint,
 	};
 
 protected:
 	double m_counters[CounterLast];
 	double m_stats[CounterLast];
-	uint64 m_begin[TimerLast], m_total[TimerLast], m_start[TimerLast];
-	uint64 m_frame;
+	float m_timer_stats[TimerLast];
+	u64 m_begin[TimerLast], m_total[TimerLast], m_start[TimerLast];
+	u64 m_frame;
 	clock_t m_lastframe;
 	int m_count;
+	int m_disp_fb_sprite_blits;
 
 	friend class GSPerfMonAutoTimer;
 
 public:
 	GSPerfMon();
 
-	void SetFrame(uint64 frame) { m_frame = frame; }
-	uint64 GetFrame() { return m_frame; }
+	void SetFrame(u64 frame) { m_frame = frame; }
+	u64 GetFrame() { return m_frame; }
+	void EndFrame();
 
-	void Put(counter_t c, double val = 0);
+	void Put(counter_t c, double val = 0) { m_counters[c] += val; }
 	double Get(counter_t c) { return m_stats[c]; }
+	float GetTimer(timer_t t) { return m_timer_stats[t]; }
 	void Update();
 
 	void Start(int timer = Main);
 	void Stop(int timer = Main);
-	int CPU(int timer = Main, bool reset = true);
+
+	__fi void AddDisplayFramebufferSpriteBlit() { m_disp_fb_sprite_blits++; }
+	__fi int GetDisplayFramebufferSpriteBlits()
+	{
+		const int blits = m_disp_fb_sprite_blits;
+		m_disp_fb_sprite_blits = 0;
+		return blits;
+	}
 };
 
 class GSPerfMonAutoTimer
@@ -80,3 +93,5 @@ public:
 	}
 	~GSPerfMonAutoTimer() { m_pm->Stop(m_timer); }
 };
+
+extern GSPerfMon g_perfmon;

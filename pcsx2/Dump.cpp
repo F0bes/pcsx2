@@ -21,8 +21,8 @@
 #include "iR5900.h"
 #include "IPU/IPU.h"
 #include "DebugTools/SymbolMap.h"
+#include "Config.h"
 
-#include "gui/AppConfig.h"
 #include "Utilities/AsciiFile.h"
 
 using namespace R5900;
@@ -128,7 +128,7 @@ void iDumpRegisters(u32 startpc, u32 temp)
 	__Log("ipu %x %x %x %x; bp: %x %x %x %x", psHu32(0x2000), psHu32(0x2010), psHu32(0x2020), psHu32(0x2030), g_BP.BP, g_BP.bufferhasnew, g_BP.FP, g_BP.IFC);
 	__Log("gif: %x %x %x", psHu32(0x3000), psHu32(0x3010), psHu32(0x3020));
 
-	for(i = 0; i < ArraySize(dmacs); ++i) {
+	for(i = 0; i < std::size(dmacs); ++i) {
 		DMACh* p = (DMACh*)(&eeHw[dmacs[i]]);
 		__Log("dma%d c%x m%x q%x t%x s%x", i, p->chcr._u32, p->madr, p->qwc, p->tadr, p->sadr);
 	}
@@ -208,8 +208,8 @@ void iDumpBlock(u32 ee_pc, u32 ee_size, uptr x86_pc, u32 x86_size)
 
 	DbgCon.WriteLn( Color_Gray, "dump block %x:%x (x86:0x%x)", ee_pc, ee_end, x86_pc );
 
-	g_Conf->Folders.Logs.Mkdir();
-	wxString dump_filename = Path::Combine( g_Conf->Folders.Logs, wxsFormat(L"R5900dump_%.8X:%.8X.txt", ee_pc, ee_end) );
+	EmuFolders::Logs.Mkdir();
+	wxString dump_filename = Path::Combine(EmuFolders::Logs, wxsFormat(L"R5900dump_%.8X:%.8X.txt", ee_pc, ee_end) );
 	AsciiFile eff( dump_filename, L"w" );
 
 	// Print register content to detect the memory access type. Warning value are taken
@@ -222,9 +222,9 @@ void iDumpBlock(u32 ee_pc, u32 ee_size, uptr x86_pc, u32 x86_size)
 	eff.Printf("\n");
 
 
-	if (!symbolMap.GetLabelString(ee_pc).empty())
+	if (!R5900SymbolMap.GetLabelString(ee_pc).empty())
 	{
-		eff.Printf( "%s\n", symbolMap.GetLabelString(ee_pc).c_str() );
+		eff.Printf( "%s\n", R5900SymbolMap.GetLabelString(ee_pc).c_str() );
 	}
 
 	for ( u32 i = ee_pc; i < ee_end; i += 4 )
@@ -247,7 +247,7 @@ void iDumpBlock(u32 ee_pc, u32 ee_size, uptr x86_pc, u32 x86_size)
 
 	// handy but slow solution (system call)
 #ifdef __linux__
-	wxString obj_filename = Path::Combine(g_Conf->Folders.Logs, wxString(L"objdump_tmp.o"));
+	wxString obj_filename = Path::Combine(EmuFolders::Logs, wxString(L"objdump_tmp.o"));
 	wxFFile objdump(obj_filename , L"wb");
 	objdump.Write(x86, x86_size);
 	objdump.Close();
@@ -272,14 +272,14 @@ void iDumpBlock( int startpc, u8 * ptr )
 
 	DbgCon.WriteLn( Color_Gray, "dump1 %x:%x, %x", startpc, pc, cpuRegs.cycle );
 
-	g_Conf->Folders.Logs.Mkdir();
+	EmuFolders::Logs.Mkdir();
 	AsciiFile eff(
-		Path::Combine( g_Conf->Folders.Logs, wxsFormat(L"R5900dump%.8X.txt", startpc) ), L"w"
+		Path::Combine( EmuFolders::Logs, wxsFormat(L"R5900dump%.8X.txt", startpc) ), L"w"
 	);
 
-	if (!symbolMap.GetLabelString(startpc).empty())
+	if (!R5900SymbolMap.GetLabelString(startpc).empty())
 	{
-		eff.Printf( "%s\n", symbolMap.GetLabelString(startpc).c_str() );
+		eff.Printf( "%s\n", R5900SymbolMap.GetLabelString(startpc).c_str() );
 	}
 
 	for ( uint i = startpc; i < s_nEndBlock; i += 4 )
@@ -297,7 +297,7 @@ void iDumpBlock( int startpc, u8 * ptr )
 
 	memzero(used);
 	numused = 0;
-	for(uint i = 0; i < ArraySize(s_pInstCache->regs); ++i) {
+	for(uint i = 0; i < std::size(s_pInstCache->regs); ++i) {
 		if( s_pInstCache->regs[i] & EEINST_USED ) {
 			used[i] = 1;
 			numused++;
@@ -306,7 +306,7 @@ void iDumpBlock( int startpc, u8 * ptr )
 
 	memzero(fpuused);
 	fpunumused = 0;
-	for(uint i = 0; i < ArraySize(s_pInstCache->fpuregs); ++i) {
+	for(uint i = 0; i < std::size(s_pInstCache->fpuregs); ++i) {
 		if( s_pInstCache->fpuregs[i] & EEINST_USED ) {
 			fpuused[i] = 1;
 			fpunumused++;
@@ -314,11 +314,11 @@ void iDumpBlock( int startpc, u8 * ptr )
 	}
 
 	eff.Printf( "       " );
-	for(uint i = 0; i < ArraySize(s_pInstCache->regs); ++i) {
+	for(uint i = 0; i < std::size(s_pInstCache->regs); ++i) {
 		if( used[i] ) eff.Printf( "%2d ", i );
 	}
 	eff.Printf( "\n" );
-	for(uint i = 0; i < ArraySize(s_pInstCache->fpuregs); ++i) {
+	for(uint i = 0; i < std::size(s_pInstCache->fpuregs); ++i) {
 		if( fpuused[i] ) eff.Printf( "%2d ", i );
 	}
 
@@ -330,10 +330,10 @@ void iDumpBlock( int startpc, u8 * ptr )
 	int count;
 	EEINST* pcur;
 
-	for(uint i = 0; i < ArraySize(s_pInstCache->regs); ++i) {
+	for(uint i = 0; i < std::size(s_pInstCache->regs); ++i) {
 		if( used[i] ) fprintf(f, "%s ", disRNameGPR[i]);
 	}
-	for(uint i = 0; i < ArraySize(s_pInstCache->fpuregs); ++i) {
+	for(uint i = 0; i < std::size(s_pInstCache->fpuregs); ++i) {
 		if( fpuused[i] ) fprintf(f, "%s ", i<32?"FR":"FA");
 	}
 	fprintf(f, "\n");
@@ -343,14 +343,14 @@ void iDumpBlock( int startpc, u8 * ptr )
 		fprintf(f, "%2d: %2.2x ", i+1, pcur->info);
 
 		count = 1;
-		for(uint j = 0; j < ArraySize(s_pInstCache->regs); j++) {
+		for(uint j = 0; j < std::size(s_pInstCache->regs); j++) {
 			if( used[j] ) {
 				fprintf(f, "%2.2x%s", pcur->regs[j], ((count%8)&&count<numused)?"_":" ");
 				++count;
 			}
 		}
 		count = 1;
-		for(uint j = 0; j < ArraySize(s_pInstCache->fpuregs); j++) {
+		for(uint j = 0; j < std::size(s_pInstCache->fpuregs); j++) {
 			if( fpuused[j] ) {
 				fprintf(f, "%2.2x%s", pcur->fpuregs[j], ((count%8)&&count<fpunumused)?"_":" ");
 				++count;

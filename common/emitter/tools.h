@@ -116,6 +116,7 @@ public:
 	void CountCores();
 	wxString GetTypeName() const;
 
+	static u32 CachedMHz();
 	u32 CalculateMHz() const;
 
 	void SIMD_EstablishMXCSRmask();
@@ -208,4 +209,4 @@ union SSE_MXCSR
 extern SSE_MXCSR MXCSR_Mask;
 
 
-extern __aligned16 x86capabilities x86caps;
+alignas(16) extern x86capabilities x86caps;

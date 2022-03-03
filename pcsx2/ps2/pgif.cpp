@@ -120,7 +120,7 @@ u32 pgif_gp1_buffer[PGIF_CMD_RB_SIZE] = {0}; //Ring buffer data.
 #define PGIF_DAT_RB_SIZE 0x20000
 struct ringBuf_t rb_gp0; //Ring buffer control variables.
 u32 pgif_gp0_buffer[PGIF_DAT_RB_SIZE] = {0}; //Ring buffer data.
-
+dma_t dma;
 
 
 //TODO: Make this be called by IopHw.cpp / psxHwReset()... but maybe it should be called by the EE reset func,
@@ -233,17 +233,10 @@ u32 immRespHndl(u32 cmd, u32 data)
 void handleGp1Command(u32 cmd)
 {
 	//Check GP1() command and configure PGIF accordingly.
-	//Commands 0x00 - 0x01 are partially handled in ps1drv, we should just clear fifo.
+	//Commands 0x00 - 0x01, 0x03, 0x05 - 0x08 are fully handled in ps1drv.
 	const u32 cmdNr = ((cmd >> 24) & 0xFF) & 0x3F;
 	switch (cmdNr)
 	{
-		case 0:
-			// Pgpu reset, mostly handled by ps1drv (00201D64 in ps1drv). Comment for case 1 apply here too.
-			ringBufferClear(&rb_gp0);
-			break;
-		case 1: //Reset GP0 fifo, seems to check that something is empty, so maybe we should do the same before clear?
-			ringBufferClear(&rb_gp0);
-			break;
 		case 2: //Acknowledge GPU IRQ
 			ackGpuIrq1();
 			break;
@@ -273,6 +266,8 @@ void handleGp1Command(u32 cmd)
 						pgpu.stat.bits.DREQ = pgpu.stat.bits.RSEND;
 						break;
 				}
+			break;
+		default:
 			break;
 	}
 }

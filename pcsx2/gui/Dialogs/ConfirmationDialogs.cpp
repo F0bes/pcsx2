@@ -95,10 +95,10 @@ static wxWindowID ParseThatResult( const wxString& src, const MsgButtons& validT
 		wxID_ANY,
 	};
 
-	for( uint i=0; i<ArraySize( retvals ); ++i )
+	for (wxWindowID retval : retvals)
 	{
-		if( (validTypes.Allows( retvals[i] )) && (src == ResultToString(retvals[i], validTypes)) )
-			return retvals[i];
+		if( (validTypes.Allows(retval)) && (src == ResultToString(retval, validTypes)) )
+			return retval;
 	}
 
 	return wxID_NONE;
@@ -309,7 +309,7 @@ void ModalButtonPanel::OnActionButtonClicked( wxCommandEvent& evt )
 
 void ModalButtonPanel::AddCustomButton( wxWindowID id, const wxString& label )
 {
-	*this += new wxButton( this, id, label ) | StdButton().Proportion(6);
+	*this += new wxButton( this, id, label ) | pxBorder().Proportion(6);
 	Bind(wxEVT_BUTTON, &ModalButtonPanel::OnActionButtonClicked, this, id);
 }
 
@@ -317,6 +317,6 @@ void ModalButtonPanel::AddCustomButton( wxWindowID id, const wxString& label )
 // wxWidgets will assign the labels and stuff for us. :D
 void ModalButtonPanel::AddActionButton( wxWindowID id )
 {
-	*this += new wxButton( this, id ) | StdButton().Proportion(6);
+	*this += new wxButton( this, id ) | pxBorder().Proportion(6);
 	Bind(wxEVT_BUTTON, &ModalButtonPanel::OnActionButtonClicked, this, id);
 }

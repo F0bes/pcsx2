@@ -1,5 +1,5 @@
 /*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2010  PCSX2 Dev Team
+ *  Copyright (C) 2002-2021  PCSX2 Dev Team
  *
  *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU Lesser General Public License as published by the Free Software Found-
@@ -52,13 +52,13 @@ Panels::GSWindowSettingsPanel::GSWindowSettingsPanel(wxWindow* parent)
 	m_text_Zoom = CreateNumericalTextCtrl(this, 5);
 
 	m_combo_AspectRatio = new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
-										 ArraySize(aspect_ratio_labels), aspect_ratio_labels, wxCB_READONLY);
+										 std::size(aspect_ratio_labels), aspect_ratio_labels, wxCB_READONLY);
 
 	m_combo_FMVAspectRatioSwitch = new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
-												  ArraySize(fmv_aspect_ratio_switch_labels), fmv_aspect_ratio_switch_labels, wxCB_READONLY);
+												  std::size(fmv_aspect_ratio_switch_labels), fmv_aspect_ratio_switch_labels, wxCB_READONLY);
 
 	m_combo_vsync = new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
-								   ArraySize(vsync_label), vsync_label, wxCB_READONLY);
+								   std::size(vsync_label), vsync_label, wxCB_READONLY);
 
 	m_text_WindowWidth = CreateNumericalTextCtrl(this, 5);
 	m_text_WindowHeight = CreateNumericalTextCtrl(this, 5);
@@ -107,7 +107,7 @@ Panels::GSWindowSettingsPanel::GSWindowSettingsPanel(wxWindow* parent)
 	s_AspectRatio.AddGrowableCol(1);
 
 	// Implement custom hotkeys (F6) with translatable string intact + not blank in GUI.
-	s_AspectRatio += Label(_("Aspect Ratio:") + wxString(" ") + fmt::format("({})", wxGetApp().GlobalAccels->findKeycodeWithCommandId("GSwindow_CycleAspectRatio").toTitleizedString())) | pxMiddle;
+	s_AspectRatio += Label(_("Aspect Ratio:") + wxString::Format(" (%s)", wxGetApp().GlobalAccels->findKeycodeWithCommandId("GSwindow_CycleAspectRatio").toTitleizedString()));
 	s_AspectRatio += m_combo_AspectRatio | pxAlignRight;
 	s_AspectRatio += Label(_("FMV Aspect Ratio Override:")) | pxMiddle;
 	s_AspectRatio += m_combo_FMVAspectRatioSwitch | pxAlignRight;
@@ -151,6 +151,7 @@ void Panels::GSWindowSettingsPanel::AppStatusEvent_OnSettingsApplied()
 
 void Panels::GSWindowSettingsPanel::ApplyConfigToGui(AppConfig& configToApply, int flags)
 {
+	const Pcsx2Config::GSOptions& gsconf(configToApply.EmuOptions.GS);
 	const AppConfig::GSWindowOptions& conf(configToApply.GSWindow);
 
 	if (!(flags & AppConfig::APPLY_FLAG_FROM_PRESET))
@@ -160,9 +161,9 @@ void Panels::GSWindowSettingsPanel::ApplyConfigToGui(AppConfig& configToApply, i
 		m_check_HideMouse->SetValue(conf.AlwaysHideMouse);
 		m_check_SizeLock->SetValue(conf.DisableResizeBorders);
 
-		m_combo_AspectRatio->SetSelection((int)conf.AspectRatio);
-		m_combo_FMVAspectRatioSwitch->SetSelection(enum_cast(conf.FMVAspectRatioSwitch));
-		m_text_Zoom->ChangeValue(wxString::FromDouble(conf.Zoom, 2));
+		m_combo_AspectRatio->SetSelection((int)gsconf.AspectRatio);
+		m_combo_FMVAspectRatioSwitch->SetSelection(enum_cast(gsconf.FMVAspectRatioSwitch));
+		m_text_Zoom->ChangeValue(wxString::FromDouble(gsconf.Zoom, 2));
 
 		m_check_DclickFullscreen->SetValue(conf.IsToggleFullscreenOnDoubleClick);
 
@@ -184,12 +185,13 @@ void Panels::GSWindowSettingsPanel::Apply()
 	appconf.AlwaysHideMouse = m_check_HideMouse->GetValue();
 	appconf.DisableResizeBorders = m_check_SizeLock->GetValue();
 
-	appconf.AspectRatio = (AspectRatioType)m_combo_AspectRatio->GetSelection();
-	appconf.FMVAspectRatioSwitch = (FMVAspectRatioSwitchType)m_combo_FMVAspectRatioSwitch->GetSelection();
+	gsconf.AspectRatio = (AspectRatioType)m_combo_AspectRatio->GetSelection();
+	gsconf.FMVAspectRatioSwitch = (FMVAspectRatioSwitchType)m_combo_FMVAspectRatioSwitch->GetSelection();
+	EmuConfig.CurrentAspectRatio = gsconf.AspectRatio;
 
 	double new_zoom = 0.0;
 	if (m_text_Zoom->GetValue().ToDouble(&new_zoom))
-		appconf.Zoom = new_zoom;
+		gsconf.Zoom = new_zoom;
 
 	gsconf.VsyncEnable = static_cast<VsyncMode>(m_combo_vsync->GetSelection());
 

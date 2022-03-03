@@ -18,15 +18,15 @@
 
 #include <list>
 
-#include "GS.h"
 #include "Gif_Unit.h"
 #include "Counters.h"
-#include "gui/GSFrame.h"
+#include "Config.h"
 
 using namespace Threading;
 using namespace R5900;
 
-__aligned16 u8 g_RealGSMem[Ps2MemSize::GSregs];
+alignas(16) u8 g_RealGSMem[Ps2MemSize::GSregs];
+static bool s_GSRegistersWritten = false;
 
 void gsSetVideoMode(GS_VideoMode mode)
 {
@@ -48,20 +48,31 @@ void gsReset()
 
 void gsUpdateFrequency(Pcsx2Config& config)
 {
-	switch (g_LimiterMode)
+	if (config.GS.FrameLimitEnable)
 	{
-	case LimiterModeType::Limit_Nominal:
-		config.GS.LimitScalar = g_Conf->Framerate.NominalScalar;
-		break;
-	case LimiterModeType::Limit_Slomo:
-		config.GS.LimitScalar = g_Conf->Framerate.SlomoScalar;
-		break;
-	case LimiterModeType::Limit_Turbo:
-		config.GS.LimitScalar = g_Conf->Framerate.TurboScalar;
-		break;
-	default:
-		pxAssert("Unknown framelimiter mode!");
+		switch (config.LimiterMode)
+		{
+		case LimiterModeType::Nominal:
+			config.GS.LimitScalar = config.Framerate.NominalScalar;
+			break;
+		case LimiterModeType::Slomo:
+			config.GS.LimitScalar = config.Framerate.SlomoScalar;
+			break;
+		case LimiterModeType::Turbo:
+			config.GS.LimitScalar = config.Framerate.TurboScalar;
+			break;
+		case LimiterModeType::Unlimited:
+			config.GS.LimitScalar = 0.0;
+			break;
+		default:
+			pxAssert("Unknown framelimiter mode!");
+		}
 	}
+	else
+	{
+		config.GS.LimitScalar = 0.0;
+	}
+
 	UpdateVSyncRate();
 }
 
@@ -212,6 +223,8 @@ void __fastcall gsWrite64_generic( u32 mem, const mem64_t* value )
 
 void __fastcall gsWrite64_page_00( u32 mem, const mem64_t* value )
 {
+	s_GSRegistersWritten |= (mem == GS_DISPFB1 || mem == GS_DISPFB2 || mem == GS_PMODE);
+
 	gsWrite64_generic( mem, value );
 }
 
@@ -370,34 +383,34 @@ void gsIrq() {
 //   This function does not regulate frame limiting, meaning it does no stalling. Stalling
 //   functions are performed by the EE, which itself uses thread sleep logic to avoid spin
 //   waiting as much as possible (maximizes CPU resource availability for the GS).
+static bool s_isSkippingCurrentFrame = false;
 
 __fi void gsFrameSkip()
 {
 	static int consec_skipped = 0;
 	static int consec_drawn = 0;
-	static bool isSkipping = false;
 
 	if( !EmuConfig.GS.FrameSkipEnable )
 	{
-		if( isSkipping )
+		if( s_isSkippingCurrentFrame )
 		{
 			// Frameskipping disabled on-the-fly .. make sure the GS is restored to non-skip
 			// behavior.
 			GSsetFrameSkip( false );
-			isSkipping = false;
+			s_isSkippingCurrentFrame = false;
 		}
 		return;
 	}
 
-	GSsetFrameSkip( isSkipping );
+	GSsetFrameSkip( s_isSkippingCurrentFrame );
 
-	if( isSkipping )
+	if( s_isSkippingCurrentFrame )
 	{
 		++consec_skipped;
 		if( consec_skipped >= EmuConfig.GS.FramesToSkip )
 		{
 			consec_skipped = 0;
-			isSkipping = false;
+			s_isSkippingCurrentFrame = false;
 		}
 	}
 	else
@@ -406,9 +419,14 @@ __fi void gsFrameSkip()
 		if( consec_drawn >= EmuConfig.GS.FramesToDraw )
 		{
 			consec_drawn = 0;
-			isSkipping = true;
+			s_isSkippingCurrentFrame = true;
 		}
 	}
+}
+
+extern bool gsIsSkippingCurrentFrame()
+{
+	return s_isSkippingCurrentFrame;
 }
 
 //These are done at VSync Start.  Drawing is done when VSync is off, then output the screen when Vsync is on
@@ -418,7 +436,9 @@ void gsPostVsyncStart()
 {
 	//gifUnit.FlushToMTGS();  // Needed for some (broken?) homebrew game loaders
 	
-	GetMTGS().PostVsyncStart();
+	const bool registers_written = s_GSRegistersWritten;
+	s_GSRegistersWritten = false;
+	GetMTGS().PostVsyncStart(registers_written);
 }
 
 void _gs_ResetFrameskip()
@@ -437,3 +457,4 @@ void SaveStateBase::gsFreeze()
 	FreezeMem(PS2MEM_GS, 0x2000);
 	Freeze(gsVideoMode);
 }
+

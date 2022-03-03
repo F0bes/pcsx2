@@ -13,6 +13,8 @@
  *  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "PrecompiledHeader.h"
+
 #include "USB.h"
 
 u8* ram = nullptr;
@@ -26,7 +28,7 @@ s32 USBinit() { return 0; }
 void USBasync(u32 cycles) {}
 void USBshutdown() {}
 void USBclose() {}
-s32 USBopen(void* pDsp) { return 0; }
+s32 USBopen(const WindowInfo& wi) { return 0; }
 s32 USBfreeze(FreezeAction mode, freezeData* data) { return 0; }
 
 u8 USBread8(u32 addr) { return 0; }

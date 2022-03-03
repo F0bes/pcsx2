@@ -15,7 +15,8 @@
 
 #pragma once
 
-#include "gui/wxAppWithHelpers.h"
+#include "wxAppWithHelpers.h"
+#include "common/WindowInfo.h"
 
 #include <wx/fileconf.h>
 #include <wx/apptrait.h>
@@ -33,19 +34,14 @@
 #endif
 
 class DisassemblyDialog;
+struct HostKeyEvent;
 
+#include "GS.h"
 #include "System.h"
 #include "System/SysThreads.h"
 
-#include "GS.h"
-
-typedef struct _keyEvent
-{
-    u32 key;
-    u32 evt;
-} keyEvent;
-
-extern uptr pDsp[2];
+// TODO: Not the best location for this, but it needs to be accessed by MTGS etc.
+extern WindowInfo g_gs_window_info;
 
 typedef void FnType_OnThreadComplete(const wxCommandEvent& evt);
 typedef void (Pcsx2App::*FnPtr_Pcsx2App)();
@@ -106,6 +102,7 @@ enum MenuIdentifiers
 	MenuId_RecentIsos_reservedStart,
 	MenuId_IsoBrowse = MenuId_RecentIsos_reservedStart + 100, // Open dialog, runs selected iso.
 	MenuId_IsoClear,
+	MenuId_IsoClearMissing,
 	MenuId_DriveSelector,
 	MenuId_DriveListRefresh,
 	MenuId_Ask_On_Booting,
@@ -203,10 +200,10 @@ enum MenuIdentifiers
 	MenuId_Recording_VirtualPad_Port1,
 #endif
 
-	// IPC Subsection
-	MenuId_IPC,
-	MenuId_IPC_Enable,
-	MenuId_IPC_Settings,
+	//  Subsection
+	MenuId_PINE,
+	MenuId_PINE_Enable,
+	MenuId_PINE_Settings,
 
 };
 
@@ -283,33 +280,9 @@ public:
 	std::unique_ptr<wxIconBundle> IconBundle;
 	std::unique_ptr<wxBitmap> Bitmap_Logo;
 	std::unique_ptr<wxBitmap> ScreenshotBitmap;
-	std::unique_ptr<AppGameDatabase> GameDB;
 
 	pxAppResources();
 	virtual ~pxAppResources();
-};
-
-// --------------------------------------------------------------------------------------
-//  FramerateManager
-// --------------------------------------------------------------------------------------
-class FramerateManager
-{
-public:
-	static const uint FramerateQueueDepth = 64;
-
-protected:
-	u64 m_fpsqueue[FramerateQueueDepth];
-	int m_fpsqueue_writepos;
-	uint m_initpause;
-
-public:
-	FramerateManager() { Reset(); }
-	virtual ~FramerateManager() = default;
-
-	void Reset();
-	void Resume();
-	void DoFrame();
-	double GetFramerate() const;
 };
 
 class StartupOptions
@@ -362,7 +335,6 @@ enum GsWindowMode_t
 class CommandlineOverrides
 {
 public:
-	AppConfig::FilenameOptions Filenames;
 	wxDirName SettingsFolder;
 	wxFileName VmSettingsFile;
 
@@ -480,7 +452,6 @@ protected:
 	Threading::Mutex m_mtx_LoadingGameDB;
 
 public:
-	FramerateManager FpsManager;
 	std::unique_ptr<CommandDictionary> GlobalCommands;
 	std::unique_ptr<AcceleratorDictionary> GlobalAccels;
 
@@ -555,6 +526,7 @@ public:
 	void OpenGsPanel();
 	void CloseGsPanel();
 	void OnGsFrameClosed(wxWindowID id);
+	void OnGsFrameDestroyed(wxWindowID id);
 	void OnMainFrameClosed(wxWindowID id);
 
 	// --------------------------------------------------------------------------
@@ -597,7 +569,6 @@ public:
 	wxImageList& GetImgList_Toolbars();
 
 	const AppImageIds& GetImgId() const;
-	AppGameDatabase* GetGameDatabase();
 
 	// --------------------------------------------------------------------------
 	//  Overrides of wxApp virtuals:
@@ -642,7 +613,7 @@ protected:
 	bool TryOpenConfigCwd();
 	void CleanupOnExit();
 	void OpenWizardConsole();
-	void PadKeyDispatch(const keyEvent& ev);
+	void PadKeyDispatch(const HostKeyEvent& ev);
 
 protected:
 	void HandleEvent(wxEvtHandler* handler, wxEventFunction func, wxEvent& event) const;
@@ -781,8 +752,8 @@ extern bool HasMainFrame();
 extern MainEmuFrame& GetMainFrame();
 extern MainEmuFrame* GetMainFramePtr();
 
-extern __aligned16 AppCoreThread CoreThread;
-extern __aligned16 SysMtgsThread mtgsThread;
+alignas(16) extern AppCoreThread CoreThread;
+alignas(16) extern SysMtgsThread mtgsThread;
 
 extern void UI_UpdateSysControls();
 

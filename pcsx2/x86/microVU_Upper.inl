@@ -30,7 +30,7 @@
 	} while (0)
 
 
-const __aligned16 u32 sse4_compvals[2][4] = {
+alignas(16) const u32 sse4_compvals[2][4] = {
 	{0x7f7fffff, 0x7f7fffff, 0x7f7fffff, 0x7f7fffff}, //1111
 	{0x7fffffff, 0x7fffffff, 0x7fffffff, 0x7fffffff}, //1111
 };
@@ -78,17 +78,18 @@ static void mVUupdateFlags(mV, const xmm& reg, const xmm& regT1in = xEmptyReg, c
 	xMOVMSKPS(gprT2, regT1); // Used for Zero Flag Calculation
 
 	xAND(mReg, AND_XYZW); // Grab "Is Signed" bits from the previous calculation
-	xSHL(mReg, 4 + ADD_XYZW);
+	xSHL(mReg, 4);
 
 	//-------------------------Check for Zero flags------------------------------
 
 	xAND(gprT2, AND_XYZW); // Grab "Is Zero" bits from the previous calculation
-	if (mFLAG.doFlag)
-		SHIFT_XYZW(gprT2);
 	xOR(mReg, gprT2);
 
 	//-------------------------Overflow Flags-----------------------------------
-	if (sFLAG.doFlag)
+	// We can't really do this because of the limited range of x86 and the value MIGHT genuinely be FLT_MAX (x86)
+	// so this will need to remain as a gamefix for the one game that needs it (Superman Returns)
+	// until some sort of soft float implementation.
+	if (sFLAG.doFlag && CHECK_VUOVERFLOWHACK)
 	{
 		//Calculate overflow
 		xMOVAPS(regT1, regT2);
@@ -97,16 +98,23 @@ static void mVUupdateFlags(mV, const xmm& reg, const xmm& regT1in = xEmptyReg, c
 		xMOVMSKPS(gprT2, regT1); // Grab sign bits  for equal results
 		xAND(gprT2, AND_XYZW); // Grab "Is FLT_MAX" bits from the previous calculation
 		xForwardJump32 oJMP(Jcc_Zero);
-			xOR(sReg, 0x820000);
+
+		xOR(sReg, 0x820000);
+		if (mFLAG.doFlag)
+		{
+			xSHL(gprT2, 12); // Add the results to the MAC Flag
+			xOR(mReg, gprT2);
+		}
+
 		oJMP.SetTarget();
-
-		xSHL(gprT2, 12 + ADD_XYZW); // Add the results to the MAC Flag
-		xOR(mReg, gprT2);
 	}
-	//-------------------------Write back flags------------------------------
 
+	//-------------------------Write back flags------------------------------
 	if (mFLAG.doFlag)
+	{
+		SHIFT_XYZW(mReg); // If it was Single Scalar, move the flags in to the correct position
 		mVUallocMFLAGb(mVU, mReg, mFLAG.write); // Set Mac Flag
+	}
 	if (sFLAG.doFlag)
 	{
 		xAND(mReg, 0xFF); // Ignore overflow bits, they're handled separately
@@ -179,7 +187,7 @@ static bool doSafeSub(microVU& mVU, int opCase, int opType, bool isACC)
 {
 	opCase1
 	{
-		if ((opType == 1) && (_Ft_ == _Fs_))
+		if ((opType == 1) && (_Ft_ == _Fs_) && (opCase == 1)) // Don't do this with BC's!
 		{
 			const xmm& Fs = mVU.regAlloc->allocReg(-1, isACC ? 32 : _Fd_, _X_Y_Z_W);
 			xPXOR(Fs, Fs); // Set to Positive 0
@@ -192,13 +200,16 @@ static bool doSafeSub(microVU& mVU, int opCase, int opType, bool isACC)
 }
 
 // Sets Up Ft Reg for Normal, BC, I, and Q Cases
-static void setupFtReg(microVU& mVU, xmm& Ft, xmm& tempFt, int opCase)
+static void setupFtReg(microVU& mVU, xmm& Ft, xmm& tempFt, int opCase, int clampType)
 {
 	opCase1
 	{
-		if (_XYZW_SS2)   { Ft = mVU.regAlloc->allocReg(_Ft_, 0, _X_Y_Z_W); tempFt = Ft; }
-		else if (clampE) { Ft = mVU.regAlloc->allocReg(_Ft_, 0, 0xf);      tempFt = Ft; }
-		else             { Ft = mVU.regAlloc->allocReg(_Ft_);              tempFt = xEmptyReg; }
+		// Based on mVUclamp2 -> mVUclamp1 below.
+		const bool willClamp = (clampE || ((clampType & cFt) && !clampE && (CHECK_VU_OVERFLOW || CHECK_VU_SIGN_OVERFLOW)));
+
+		if (_XYZW_SS2)      { Ft = mVU.regAlloc->allocReg(_Ft_, 0, _X_Y_Z_W); tempFt = Ft; }
+		else if (willClamp) { Ft = mVU.regAlloc->allocReg(_Ft_, 0, 0xf);      tempFt = Ft; }
+		else                { Ft = mVU.regAlloc->allocReg(_Ft_);              tempFt = xEmptyReg;  }
 	}
 	opCase2
 	{
@@ -239,7 +250,7 @@ static void mVU_FMACa(microVU& mVU, int recPass, int opCase, int opType, bool is
 			return;
 
 		xmm Fs, Ft, ACC, tempFt;
-		setupFtReg(mVU, Ft, tempFt, opCase);
+		setupFtReg(mVU, Ft, tempFt, opCase, clampType);
 
 		if (isACC)
 		{
@@ -270,7 +281,7 @@ static void mVU_FMACa(microVU& mVU, int recPass, int opCase, int opType, bool is
 				xPSHUF.D(ACC, ACC, shuffleSS(_X_Y_Z_W));
 			mVU.regAlloc->clearNeeded(ACC);
 		}
-		else
+		else if (opType < 3 || opType == 5) // Not Min/Max or is ADDi(5) (TODO: Reorganise this so its < 4 including ADDi)
 			mVUupdateFlags(mVU, Fs, tempFt);
 
 		mVU.regAlloc->clearNeeded(Fs); // Always Clear Written Reg First
@@ -292,7 +303,7 @@ static void mVU_FMACb(microVU& mVU, int recPass, int opCase, int opType, microOp
 	pass2
 	{
 		xmm Fs, Ft, ACC, tempFt;
-		setupFtReg(mVU, Ft, tempFt, opCase);
+		setupFtReg(mVU, Ft, tempFt, opCase, clampType);
 
 		Fs = mVU.regAlloc->allocReg(_Fs_, 0, _X_Y_Z_W);
 		ACC = mVU.regAlloc->allocReg(32, 32, 0xf, false);
@@ -340,7 +351,7 @@ static void mVU_FMACc(microVU& mVU, int recPass, int opCase, microOpcode opEnum,
 	pass2
 	{
 		xmm Fs, Ft, ACC, tempFt;
-		setupFtReg(mVU, Ft, tempFt, opCase);
+		setupFtReg(mVU, Ft, tempFt, opCase, clampType);
 
 		ACC = mVU.regAlloc->allocReg(32);
 		Fs = mVU.regAlloc->allocReg(_Fs_, _Fd_, _X_Y_Z_W);
@@ -377,7 +388,7 @@ static void mVU_FMACd(microVU& mVU, int recPass, int opCase, microOpcode opEnum,
 	pass2
 	{
 		xmm Fs, Ft, Fd, tempFt;
-		setupFtReg(mVU, Ft, tempFt, opCase);
+		setupFtReg(mVU, Ft, tempFt, opCase, clampType);
 
 		Fs = mVU.regAlloc->allocReg(_Fs_,  0, _X_Y_Z_W);
 		Fd = mVU.regAlloc->allocReg(32, _Fd_, _X_Y_Z_W);

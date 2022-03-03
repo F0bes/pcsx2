@@ -45,7 +45,7 @@ using namespace vtlb_private;
 
 namespace vtlb_private
 {
-	__aligned(64) MapData vtlbdata;
+	alignas(64) MapData vtlbdata;
 }
 
 static vtlbHandler vtlbHandlerCount = 0;
@@ -164,7 +164,7 @@ DataType __fastcall vtlb_memRead(u32 addr)
 	return 0;		// technically unreachable, but suppresses warnings.
 }
 
-void __fastcall vtlb_memRead64(u32 mem, mem64_t *out)
+RETURNS_R64 vtlb_memRead64(u32 mem)
 {
 	auto vmv = vtlbdata.vmap[mem>>VTLB_PAGE_BITS];
 
@@ -173,22 +173,22 @@ void __fastcall vtlb_memRead64(u32 mem, mem64_t *out)
 		if (!CHECK_EEREC) {
 			if(CHECK_CACHE && CheckCache(mem)) 
 			{
-				*out = readCache64(mem);
-				return;
+				return readCache64(mem);
 			}
 		}
 
-		*out = *(mem64_t*)vmv.assumePtr(mem);
+		return r64_load(reinterpret_cast<const void*>(vmv.assumePtr(mem)));
 	}
 	else
 	{
 		//has to: translate, find function, call function
 		u32 paddr = vmv.assumeHandlerGetPAddr(mem);
 		//Console.WriteLn("Translated 0x%08X to 0x%08X", addr,paddr);
-		vmv.assumeHandler<64, false>()(paddr, out);
+		return vmv.assumeHandler<64, false>()(paddr);
 	}
 }
-void __fastcall vtlb_memRead128(u32 mem, mem128_t *out)
+
+RETURNS_R128 vtlb_memRead128(u32 mem)
 {
 	auto vmv = vtlbdata.vmap[mem>>VTLB_PAGE_BITS];
 
@@ -198,20 +198,18 @@ void __fastcall vtlb_memRead128(u32 mem, mem128_t *out)
 		{
 			if(CHECK_CACHE && CheckCache(mem)) 
 			{
-				out->lo = readCache64(mem);
-				out->hi = readCache64(mem+8);
-				return;
+				return readCache128(mem);
 			}
 		}
 
-		CopyQWC(out,(void*)vmv.assumePtr(mem));
+		return r128_load(reinterpret_cast<const void*>(vmv.assumePtr(mem)));
 	}
 	else
 	{
 		//has to: translate, find function, call function
 		u32 paddr = vmv.assumeHandlerGetPAddr(mem);
 		//Console.WriteLn("Translated 0x%08X to 0x%08X", addr,paddr);
-		vmv.assumeHandler<128, false>()(paddr, out);
+		return vmv.assumeHandler<128, false>()(paddr);
 	}
 }
 
@@ -436,28 +434,28 @@ static __ri void vtlb_BusError(u32 addr,u32 mode)
 }
 
 template<typename OperandType, u32 saddr>
-OperandType __fastcall vtlbUnmappedVReadSm(u32 addr)					{ vtlb_Miss(addr|saddr,0); return 0; }
+OperandType __fastcall vtlbUnmappedVReadSm(u32 addr)                   { vtlb_Miss(addr|saddr,0); return 0; }
 
 template<typename OperandType, u32 saddr>
-void __fastcall vtlbUnmappedVReadLg(u32 addr,OperandType* data)			{ vtlb_Miss(addr|saddr,0); }
+u_to_r<OperandType> __vectorcall vtlbUnmappedVReadLg(u32 addr)         { vtlb_Miss(addr|saddr,0); return rhelper<OperandType>::zero(); }
 
 template<typename OperandType, u32 saddr>
-void __fastcall vtlbUnmappedVWriteSm(u32 addr,OperandType data)			{ vtlb_Miss(addr|saddr,1); }
+void __fastcall vtlbUnmappedVWriteSm(u32 addr,OperandType data)        { vtlb_Miss(addr|saddr,1); }
 
 template<typename OperandType, u32 saddr>
-void __fastcall vtlbUnmappedVWriteLg(u32 addr,const OperandType* data)	{ vtlb_Miss(addr|saddr,1); }
+void __fastcall vtlbUnmappedVWriteLg(u32 addr,const OperandType* data) { vtlb_Miss(addr|saddr,1); }
 
 template<typename OperandType, u32 saddr>
-OperandType __fastcall vtlbUnmappedPReadSm(u32 addr)					{ vtlb_BusError(addr|saddr,0); return 0; }
+OperandType __fastcall vtlbUnmappedPReadSm(u32 addr)                   { vtlb_BusError(addr|saddr,0); return 0; }
 
 template<typename OperandType, u32 saddr>
-void __fastcall vtlbUnmappedPReadLg(u32 addr,OperandType* data)			{ vtlb_BusError(addr|saddr,0); }
+u_to_r<OperandType> __vectorcall vtlbUnmappedPReadLg(u32 addr)         { vtlb_BusError(addr|saddr,0); return rhelper<OperandType>::zero(); }
 
 template<typename OperandType, u32 saddr>
-void __fastcall vtlbUnmappedPWriteSm(u32 addr,OperandType data)			{ vtlb_BusError(addr|saddr,1); }
+void __fastcall vtlbUnmappedPWriteSm(u32 addr,OperandType data)        { vtlb_BusError(addr|saddr,1); }
 
 template<typename OperandType, u32 saddr>
-void __fastcall vtlbUnmappedPWriteLg(u32 addr,const OperandType* data)	{ vtlb_BusError(addr|saddr,1); }
+void __fastcall vtlbUnmappedPWriteLg(u32 addr,const OperandType* data) { vtlb_BusError(addr|saddr,1); }
 
 // --------------------------------------------------------------------------------------
 //  VTLB mapping errors
@@ -484,14 +482,16 @@ static mem32_t __fastcall vtlbDefaultPhyRead32(u32 addr)
 	return 0;
 }
 
-static void __fastcall vtlbDefaultPhyRead64(u32 addr, mem64_t* dest)
+static __m128i __vectorcall vtlbDefaultPhyRead64(u32 addr)
 {
 	pxFailDev(pxsFmt("(VTLB) Attempted read64 from unmapped physical address @ 0x%08X.", addr));
+	return r64_zero();
 }
 
-static void __fastcall vtlbDefaultPhyRead128(u32 addr, mem128_t* dest)
+static __m128i __vectorcall vtlbDefaultPhyRead128(u32 addr)
 {
 	pxFailDev(pxsFmt("(VTLB) Attempted read128 from unmapped physical address @ 0x%08X.", addr));
+	return r128_zero();
 }
 
 static void __fastcall vtlbDefaultPhyWrite8(u32 addr, mem8_t data)
@@ -587,7 +587,7 @@ void vtlb_MapHandler(vtlbHandler handler, u32 start, u32 size)
 	verify(0==(size&VTLB_PAGE_MASK) && size>0);
 
 	u32 end = start + (size - VTLB_PAGE_SIZE);
-	pxAssume( (end>>VTLB_PAGE_BITS) < ArraySize(vtlbdata.pmap) );
+	pxAssume( (end>>VTLB_PAGE_BITS) < std::size(vtlbdata.pmap) );
 
 	while (start <= end)
 	{
@@ -607,7 +607,7 @@ void vtlb_MapBlock(void* base, u32 start, u32 size, u32 blocksize)
 
 	sptr baseint = (sptr)base;
 	u32 end = start + (size - VTLB_PAGE_SIZE);
-	verify((end>>VTLB_PAGE_BITS) < ArraySize(vtlbdata.pmap));
+	verify((end>>VTLB_PAGE_BITS) < std::size(vtlbdata.pmap));
 
 	while (start <= end)
 	{
@@ -632,7 +632,7 @@ void vtlb_Mirror(u32 new_region,u32 start,u32 size)
 	verify(0==(size&VTLB_PAGE_MASK) && size>0);
 
 	u32 end = start + (size-VTLB_PAGE_SIZE);
-	verify((end>>VTLB_PAGE_BITS) < ArraySize(vtlbdata.pmap));
+	verify((end>>VTLB_PAGE_BITS) < std::size(vtlbdata.pmap));
 
 	while(start <= end)
 	{
@@ -782,7 +782,7 @@ void vtlb_Term()
 	//nothing to do for now
 }
 
-constexpr size_t VMAP_SIZE = sizeof(VTLBVirtual) * VTLB_VMAP_ITEMS;
+static constexpr size_t VMAP_SIZE = sizeof(VTLBVirtual) * VTLB_VMAP_ITEMS;
 
 // Reserves the vtlb core allocation used by various emulation components!
 // [TODO] basemem - request allocating memory at the specified virtual location, which can allow
@@ -807,16 +807,26 @@ void vtlb_Core_Alloc()
 	}
 }
 
+static constexpr size_t PPMAP_SIZE = sizeof(*vtlbdata.ppmap) * VTLB_VMAP_ITEMS;
+
 // The LUT is only used for 1 game so we allocate it only when the gamefix is enabled (save 4MB)
 // However automatic gamefix is done after the standard init so a new init function was done.
 void vtlb_Alloc_Ppmap()
 {
-	if (vtlbdata.ppmap) return;
+	if (vtlbdata.ppmap)
+		return;
 
-	vtlbdata.ppmap = (u32*)_aligned_malloc( VTLB_VMAP_ITEMS * sizeof(*vtlbdata.ppmap), 16 );
-	if (!vtlbdata.ppmap)
-		throw Exception::OutOfMemory( L"VTLB PS2 Virtual Address Translation LUT" )
-			.SetDiagMsg(pxsFmt("(%u megs)", VTLB_VMAP_ITEMS * sizeof(*vtlbdata.ppmap) / _1mb));
+	static u32* ppmap = nullptr;
+
+	if (!ppmap)
+		ppmap = (u32*)GetVmMemory().BumpAllocator().Alloc(PPMAP_SIZE);
+
+	bool okay = HostSys::MmapCommitPtr(ppmap, PPMAP_SIZE, PageProtectionMode().Read().Write());
+	if (okay)
+		vtlbdata.ppmap = ppmap;
+	else
+		throw Exception::OutOfMemory(L"VTLB PS2 Virtual Address Translation LUT")
+			.SetDiagMsg(pxsFmt("(%u megs)", PPMAP_SIZE / _1mb));
 
 	// By default a 1:1 virtual to physical mapping
 	for (u32 i = 0; i < VTLB_VMAP_ITEMS; i++)
@@ -825,11 +835,16 @@ void vtlb_Alloc_Ppmap()
 
 void vtlb_Core_Free()
 {
-	if (vtlbdata.vmap) {
+	if (vtlbdata.vmap)
+	{
 		HostSys::MmapResetPtr(vtlbdata.vmap, VMAP_SIZE);
 		vtlbdata.vmap = nullptr;
 	}
-	safe_aligned_free( vtlbdata.ppmap );
+	if (vtlbdata.ppmap)
+	{
+		HostSys::MmapResetPtr(vtlbdata.ppmap, PPMAP_SIZE);
+		vtlbdata.ppmap = nullptr;
+	}
 }
 
 static wxString GetHostVmErrorMsg()

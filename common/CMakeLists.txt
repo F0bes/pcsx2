@@ -17,21 +17,30 @@ target_sources(common PRIVATE
 	EventSource.cpp
 	Exceptions.cpp
 	FastFormatString.cpp
+	FastJmp.cpp
+	GL/Context.cpp
+	GL/Program.cpp
+	GL/ShaderCache.cpp
+	GL/StreamBuffer.cpp
+	FileSystem.cpp
 	IniInterface.cpp
 	Mutex.cpp
+	Misc.cpp
+	MD5Digest.cpp
 	PathUtils.cpp
 	PrecompiledHeader.cpp
 	Perf.cpp
-	pxStaticText.cpp
+	ProgressCallback.cpp
 	pxStreams.cpp
 	pxTranslate.cpp
-	pxWindowTextWriter.cpp
 	RwMutex.cpp
 	Semaphore.cpp
+	SettingsWrapper.cpp
 	StringHelpers.cpp
+	StringUtil.cpp
+	Timer.cpp
 	ThreadTools.cpp
-	wxGuiTools.cpp
-	wxHelpers.cpp
+	WindowInfo.cpp
 	emitter/bmi.cpp
 	emitter/cpudetect.cpp
 	emitter/fpu.cpp
@@ -53,35 +62,50 @@ target_sources(common PRIVATE
 	Linux/LnxMisc.cpp
 	Windows/WinThreads.cpp
 	Windows/WinHostSys.cpp
-	Windows/WinMisc.cpp)
+	Windows/WinMisc.cpp
+)
 
 # x86emitter headers
 target_sources(common PRIVATE
+	Align.h
+	AlignedMalloc.h
 	Assertions.h
 	boost_spsc_queue.hpp
 	Console.h
 	Dependencies.h
 	EventSource.h
 	Exceptions.h
+	FastJmp.h
+	FileSystem.h
 	General.h
+	GL/Context.h
+	GL/Program.h
+	GL/ShaderCache.h
+	GL/StreamBuffer.h
+	HashCombine.h
 	MemcpyFast.h
 	MemsetFast.inl
+	MD5Digest.h
 	Path.h
 	PageFaultSource.h
 	PrecompiledHeader.h
+	ProgressCallback.h
 	pxForwardDefs.h
-	pxStaticText.h
 	pxStreams.h
 	RedtapeWindows.h
 	RwMutex.h
 	SafeArray.h
-	ScopedAlloc.h
+	ScopedGuard.h
 	ScopedPtrMT.h
+	SettingsInterface.h
+	SettingsWrapper.h
 	StringHelpers.h
+	StringUtil.h
+	Timer.h
 	Threading.h
 	TraceLog.h
+	WindowInfo.h
 	wxBaseTools.h
-	wxGuiTools.h
 	emitter/cpudetect_internal.h
 	emitter/implement/dwshift.h
 	emitter/implement/group1.h
@@ -107,17 +131,99 @@ target_sources(common PRIVATE
 	emitter/tools.h
 	emitter/x86emitter.h
 	emitter/x86types.h
+)
+
+if(USE_VULKAN)
+	target_link_libraries(common PUBLIC
+		Vulkan-Headers glslang
 	)
+	target_sources(common PRIVATE
+		Vulkan/ShaderCache.cpp
+		Vulkan/Texture.cpp
+		Vulkan/Loader.cpp
+		Vulkan/ShaderCompiler.cpp
+		Vulkan/Util.cpp
+		Vulkan/SwapChain.cpp
+		Vulkan/StreamBuffer.cpp
+		Vulkan/Context.cpp
+		Vulkan/Builders.cpp
+		Vulkan/vk_mem_alloc.cpp
+		Vulkan/Context.h
+		Vulkan/Texture.h
+		Vulkan/ShaderCompiler.h
+		Vulkan/SwapChain.h
+		Vulkan/Builders.h
+		Vulkan/StreamBuffer.h
+		Vulkan/ShaderCache.h
+		Vulkan/EntryPoints.h
+		Vulkan/Loader.h
+		Vulkan/Util.h
+	)
+endif()
 
 if(USE_VTUNE)
 	target_link_libraries(common PUBLIC Vtune::Vtune)
 endif()
 
 if(WIN32)
-	target_link_libraries(common PUBLIC pthreads4w Winmm.lib)
+	enable_language(ASM_MASM)
+	target_sources(common PRIVATE FastJmp.asm)
+	target_link_libraries(common PUBLIC WIL::WIL pthreads4w Winmm.lib)
+	target_sources(common PRIVATE
+		FastJmp.asm
+		D3D11/ShaderCache.cpp
+		D3D11/ShaderCache.h
+		D3D11/ShaderCompiler.cpp
+		D3D11/ShaderCompiler.h
+		GL/ContextWGL.cpp
+		GL/ContextWGL.h
+	)
+	target_link_libraries(common PUBLIC pthreads4w Winmm.lib opengl32.lib)
+elseif(APPLE)
+	target_sources(common PRIVATE
+		GL/ContextAGL.mm
+		GL/ContextAGL.h
+	)
+	set_source_files_properties(GL/ContextAGL.mm PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+	target_compile_options(common PUBLIC -fobjc-arc)
+	target_link_options(common PUBLIC -fobjc-link-runtime)
+else()
+	if(X11_API OR WAYLAND_API)
+		target_sources(common PRIVATE
+			GL/ContextEGL.cpp
+			GL/ContextEGL.h
+		)
+		target_link_libraries(common PRIVATE PkgConfig::EGL)
+	endif()
+
+	if(X11_API)
+		target_sources(common PRIVATE
+			GL/ContextEGLX11.cpp
+			GL/ContextEGLX11.h
+		)
+		target_compile_definitions(common PUBLIC "VULKAN_USE_X11=1")
+		if(TARGET PkgConfig::XRANDR)
+			target_link_libraries(common PRIVATE PkgConfig::XRANDR)
+			target_compile_definitions(common PRIVATE "HAS_XRANDR=1")
+		endif()
+	endif()
+
+	if(WAYLAND_API)
+		target_sources(common PRIVATE
+			GL/ContextEGLWayland.cpp
+			GL/ContextEGLWayland.h
+		)
+		target_link_libraries(common PRIVATE ${WAYLAND_EGL_LIBRARIES})
+		target_compile_definitions(common PUBLIC "VULKAN_USE_WAYLAND=1")
+	endif()
 endif()
 
-target_link_libraries(common PRIVATE ${LIBC_LIBRARIES} PUBLIC wxWidgets::all)
+if (USE_GCC AND CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+	# GCC LTO doesn't work with asm statements
+	set_source_files_properties(FastJmp.cpp PROPERTIES COMPILE_FLAGS -fno-lto)
+endif()
+
+target_link_libraries(common PRIVATE ${LIBC_LIBRARIES} PUBLIC wxWidgets::all glad)
 target_compile_features(common PUBLIC cxx_std_17)
 target_include_directories(common PUBLIC ../3rdparty/include ../)
 target_compile_definitions(common PUBLIC "${PCSX2_DEFS}")

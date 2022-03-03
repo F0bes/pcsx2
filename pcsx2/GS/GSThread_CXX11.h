@@ -17,6 +17,10 @@
 
 #include "GS.h"
 #include "common/boost_spsc_queue.hpp"
+#include "common/General.h"
+#include <condition_variable>
+#include <functional>
+#include <mutex>
 
 template <class T, int CAPACITY>
 class GSJobQueue final
@@ -49,13 +53,24 @@ private:
 
 			l.unlock();
 
-			while (m_queue.consume_one(*this))
-				;
-
+			u32 waited = 0;
+			while (true)
 			{
-				std::lock_guard<std::mutex> wait_guard(m_wait_lock);
+				while (m_queue.consume_one(*this))
+					waited = 0;
+
+				if (waited == 0)
+				{
+					{
+						std::lock_guard<std::mutex> wait_guard(m_wait_lock);
+					}
+					m_empty.notify_one();
+				}
+
+				if (waited >= SPIN_TIME_NS)
+					break;
+				waited += ShortSpin();
 			}
-			m_empty.notify_one();
 
 			l.lock();
 		}
@@ -98,8 +113,15 @@ public:
 
 	void Wait()
 	{
-		if (IsEmpty())
-			return;
+		u32 waited = 0;
+		while (true)
+		{
+			if (IsEmpty())
+				return;
+			if (waited >= SPIN_TIME_NS)
+				break;
+			waited += ShortSpin();
+		}
 
 		std::unique_lock<std::mutex> l(m_wait_lock);
 		while (!IsEmpty())

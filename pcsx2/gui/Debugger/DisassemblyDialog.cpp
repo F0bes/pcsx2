@@ -90,7 +90,10 @@ CpuTabPage::CpuTabPage(wxWindow* parent, DebugInterface* _cpu)
 	disassembly = new CtrlDisassemblyView(this, cpu);
 	registerList = new CtrlRegisterList(leftTabs, cpu);
 	functionList = new wxListBox(leftTabs, wxID_ANY, wxDefaultPosition, wxDefaultSize, 0, NULL, wxBORDER_NONE | wxLB_SORT);
-	memory = new CtrlMemView(bottomTabs, cpu);
+
+	wxPanel* memoryPanel = new wxPanel(bottomTabs);
+	memory = new CtrlMemView(memoryPanel, cpu);
+	memorySearch = new CtrlMemSearch(memoryPanel, cpu);
 
 	// create register list and disassembly section
 	wxBoxSizer* middleSizer = new wxBoxSizer(wxHORIZONTAL);
@@ -110,8 +113,19 @@ CpuTabPage::CpuTabPage(wxWindow* parent, DebugInterface* _cpu)
 	middleSizer->Add(disassembly, 2, wxEXPAND);
 	mainSizer->Add(middleSizer, 3, wxEXPAND | wxBOTTOM, 3);
 
+	wxBoxSizer *memorySizer = new wxBoxSizer(wxHORIZONTAL);
+	memorySizer->Add(memory, 1, wxEXPAND);
+#ifdef _WIN32
+	memorySearch->SetMaxSize(wxSize(310 * MSW_GetDPIScale(), -1));
+#else
+	memorySearch->SetMaxSize(wxSize(330, -1));
+#endif
+	memorySizer->Add(memorySearch, 1, wxEXPAND);
+	memoryPanel->SetSizer(memorySizer);
+	memoryPanel->SetBackgroundColour(wxTransparentColor);
+
 	// create bottom section
-	bottomTabs->AddPage(memory, L"Memory");
+	bottomTabs->AddPage(memoryPanel, L"Memory");
 
 	breakpointList = new BreakpointList(bottomTabs, cpu, disassembly);
 	bottomTabs->AddPage(breakpointList, L"Breakpoints");
@@ -147,12 +161,12 @@ void CpuTabPage::reloadSymbolMap()
 {
 	if (!symbolCount)
 	{
-		auto funcs = symbolMap.GetAllSymbols(ST_FUNCTION);
+		auto funcs = cpu->GetSymbolMap().GetAllSymbols(ST_FUNCTION);
 		symbolCount = funcs.size();
 		for (size_t i = 0; i < funcs.size(); i++)
 		{
 			wxString name = wxString(funcs[i].name.c_str(), wxConvUTF8);
-			functionList->Append(name, (void*)funcs[i].address);
+			functionList->Append(name, reinterpret_cast<void*>(static_cast<uintptr_t>(funcs[i].address)));
 		}
 	}
 }

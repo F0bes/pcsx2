@@ -22,6 +22,7 @@
 #include <iphlpapi.h>
 //#include <ws2tcpip.h>
 //#include <comdef.h>
+#include "common/StringUtil.h"
 #elif defined(__linux__)
 #include <sys/ioctl.h>
 #include <net/if.h>
@@ -45,6 +46,7 @@ char errbuf[PCAP_ERRBUF_SIZE];
 
 int pcap_io_running = 0;
 bool pcap_io_switched;
+bool pcap_io_blocking;
 
 extern u8 eeprom[];
 
@@ -58,7 +60,7 @@ mac_address host_mac;
 //IP_ADAPTER_ADDRESSES is a structure that contains ptrs to data in other regions
 //of the buffer, se we need to return both so the caller can free the buffer
 //after it's finished reading the needed data from IP_ADAPTER_ADDRESSES
-bool PCAPGetWin32Adapter(const char* name, PIP_ADAPTER_ADDRESSES adapter, std::unique_ptr<IP_ADAPTER_ADDRESSES[]>* buffer)
+bool PCAPGetWin32Adapter(const std::string& name, PIP_ADAPTER_ADDRESSES adapter, std::unique_ptr<IP_ADAPTER_ADDRESSES[]>* buffer)
 {
 	const int guidindex = strlen("\\Device\\NPF_");
 
@@ -70,7 +72,7 @@ bool PCAPGetWin32Adapter(const char* name, PIP_ADAPTER_ADDRESSES adapter, std::u
 
 	DWORD dwStatus = GetAdaptersAddresses(
 		AF_UNSPEC,
-		GAA_FLAG_INCLUDE_PREFIX,
+		GAA_FLAG_INCLUDE_PREFIX | GAA_FLAG_INCLUDE_GATEWAYS,
 		NULL,
 		AdapterInfo.get(),
 		&dwBufLen);
@@ -83,9 +85,9 @@ bool PCAPGetWin32Adapter(const char* name, PIP_ADAPTER_ADDRESSES adapter, std::u
 		dwBufLen = sizeof(IP_ADAPTER_ADDRESSES) * neededSize;
 		DevCon.WriteLn("DEV9: New size %i", neededSize);
 
-		DWORD dwStatus = GetAdaptersAddresses(
+		dwStatus = GetAdaptersAddresses(
 			AF_UNSPEC,
-			GAA_FLAG_INCLUDE_PREFIX,
+			GAA_FLAG_INCLUDE_PREFIX | GAA_FLAG_INCLUDE_GATEWAYS,
 			NULL,
 			AdapterInfo.get(),
 			&dwBufLen);
@@ -97,7 +99,7 @@ bool PCAPGetWin32Adapter(const char* name, PIP_ADAPTER_ADDRESSES adapter, std::u
 
 	do
 	{
-		if (0 == strcmp(pAdapterInfo->AdapterName, &name[guidindex]))
+		if (0 == strcmp(pAdapterInfo->AdapterName, &name.c_str()[guidindex]))
 		{
 			*adapter = *pAdapterInfo;
 			buffer->swap(AdapterInfo);
@@ -110,7 +112,7 @@ bool PCAPGetWin32Adapter(const char* name, PIP_ADAPTER_ADDRESSES adapter, std::u
 }
 #elif defined(__POSIX__)
 //getifaddrs is not POSIX, but is supported on MAC & Linux
-bool PCAPGetIfAdapter(char* name, ifaddrs* adapter, ifaddrs** buffer)
+bool PCAPGetIfAdapter(const std::string& name, ifaddrs* adapter, ifaddrs** buffer)
 {
 	//Note, we don't support "any" adapter, but that also fails in pcap_io_init()
 	ifaddrs* adapterInfo;
@@ -124,7 +126,7 @@ bool PCAPGetIfAdapter(char* name, ifaddrs* adapter, ifaddrs** buffer)
 
 	do
 	{
-		if (pAdapter->ifa_addr->sa_family == AF_INET && strcmp(pAdapter->ifa_name, name) == 0)
+		if (pAdapter->ifa_addr != nullptr && pAdapter->ifa_addr->sa_family == AF_INET && strcmp(pAdapter->ifa_name, name.c_str()) == 0)
 			break;
 
 		pAdapter = pAdapter->ifa_next;
@@ -143,7 +145,7 @@ bool PCAPGetIfAdapter(char* name, ifaddrs* adapter, ifaddrs** buffer)
 #endif
 
 // Fetches the MAC address and prints it
-int GetMACAddress(char* adapter, mac_address* addr)
+int GetMACAddress(const std::string& adapter, mac_address* addr)
 {
 	int retval = 0;
 #ifdef _WIN32
@@ -159,7 +161,7 @@ int GetMACAddress(char* adapter, mac_address* addr)
 #elif defined(__linux__)
 	struct ifreq ifr;
 	int fd = socket(AF_INET, SOCK_DGRAM, 0);
-	strcpy(ifr.ifr_name, adapter);
+	strcpy(ifr.ifr_name, adapter.c_str());
 	if (0 == ioctl(fd, SIOCGIFHWADDR, &ifr))
 	{
 		retval = 1;
@@ -167,7 +169,7 @@ int GetMACAddress(char* adapter, mac_address* addr)
 	}
 	else
 	{
-		Console.Error("Could not get MAC address for adapter: %s", adapter);
+		Console.Error("Could not get MAC address for adapter: %s", adapter.c_str());
 	}
 	close(fd);
 #else
@@ -176,18 +178,18 @@ int GetMACAddress(char* adapter, mac_address* addr)
 	return retval;
 }
 
-int pcap_io_init(char* adapter, bool switched, mac_address virtual_mac)
+int pcap_io_init(const std::string& adapter, bool switched, mac_address virtual_mac)
 {
 	struct bpf_program fp;
 	char filter[1024] = "ether broadcast or ether dst ";
 	int dlt;
 	char* dlt_name;
-	Console.WriteLn("DEV9: Opening adapter '%s'...", adapter);
+	Console.WriteLn("DEV9: Opening adapter '%s'...", adapter.c_str());
 
 	pcap_io_switched = switched;
 
 	/* Open the adapter */
-	if ((adhandle = pcap_open_live(adapter, // name of the device
+	if ((adhandle = pcap_open_live(adapter.c_str(), // name of the device
 			 65536, // portion of the packet to capture.
 			 // 65536 grants that the whole packet will be captured on all the MACs.
 			 switched ? 1 : 0,
@@ -196,7 +198,7 @@ int pcap_io_init(char* adapter, bool switched, mac_address virtual_mac)
 			 )) == NULL)
 	{
 		Console.Error("DEV9: %s", errbuf);
-		Console.Error("DEV9: Unable to open the adapter. %s is not supported by pcap", adapter);
+		Console.Error("DEV9: Unable to open the adapter. %s is not supported by pcap", adapter.c_str());
 		return -1;
 	}
 	if (switched)
@@ -219,6 +221,14 @@ int pcap_io_init(char* adapter, bool switched, mac_address virtual_mac)
 		}
 	}
 
+	if (pcap_setnonblock(adhandle, 1, errbuf) == -1)
+	{
+		Console.Error("DEV9: Error setting non-blocking: %s", pcap_geterr(adhandle));
+		Console.Error("DEV9: Continuing in blocking mode");
+		pcap_io_blocking = true;
+	}
+	else
+		pcap_io_blocking = false;
 
 	dlt = pcap_datalink(adhandle);
 	dlt_name = (char*)pcap_datalink_val_to_name(dlt);
@@ -348,9 +358,8 @@ void pcap_io_close()
 PCAPAdapter::PCAPAdapter()
 	: NetAdapter()
 {
-	if (config.ethEnable == 0)
+	if (!EmuConfig.DEV9.EthEnable)
 		return;
-
 #ifdef _WIN32
 	if (!load_pcap())
 		return;
@@ -359,7 +368,7 @@ PCAPAdapter::PCAPAdapter()
 	mac_address hostMAC;
 	mac_address newMAC;
 
-	GetMACAddress(config.Eth, &hostMAC);
+	GetMACAddress(EmuConfig.DEV9.EthDevice, &hostMAC);
 	memcpy(&newMAC, ps2MAC, 6);
 
 	//Lets take the hosts last 2 bytes to make it unique on Xlink
@@ -370,33 +379,41 @@ PCAPAdapter::PCAPAdapter()
 	host_mac = hostMAC;
 	ps2_mac = newMAC; //Needed outside of this class
 
+	if (pcap_io_init(EmuConfig.DEV9.EthDevice, EmuConfig.DEV9.EthApi == Pcsx2Config::DEV9Options::NetApi::PCAP_Switched, newMAC) == -1)
+	{
+		Console.Error("DEV9: Can't open Device '%s'", EmuConfig.DEV9.EthDevice.c_str());
+		return;
+	}
+
 #ifdef _WIN32
 	IP_ADAPTER_ADDRESSES adapter;
 	std::unique_ptr<IP_ADAPTER_ADDRESSES[]> buffer;
-	if (PCAPGetWin32Adapter(config.Eth, &adapter, &buffer))
+	if (PCAPGetWin32Adapter(EmuConfig.DEV9.EthDevice, &adapter, &buffer))
 		InitInternalServer(&adapter);
 	else
+	{
+		Console.Error("DEV9: Failed to get adapter information");
 		InitInternalServer(nullptr);
+	}
 #elif defined(__POSIX__)
 	ifaddrs adapter;
 	ifaddrs* buffer;
-	if (PCAPGetIfAdapter(config.Eth, &adapter, &buffer))
+	if (PCAPGetIfAdapter(EmuConfig.DEV9.EthDevice, &adapter, &buffer))
 	{
 		InitInternalServer(&adapter);
 		freeifaddrs(buffer);
 	}
 	else
-		InitInternalServer(nullptr);
-#endif
-
-	if (pcap_io_init(config.Eth, config.EthApi == NetApi::PCAP_Switched, newMAC) == -1)
 	{
-		Console.Error("Can't open Device '%s'\n", config.Eth);
+		Console.Error("DEV9: Failed to get adapter information");
+		InitInternalServer(nullptr);
 	}
+#endif
 }
 bool PCAPAdapter::blocks()
 {
-	return true;
+	pxAssert(pcap_io_running);
+	return pcap_io_blocking;
 }
 bool PCAPAdapter::isInitialised()
 {
@@ -405,19 +422,22 @@ bool PCAPAdapter::isInitialised()
 //gets a packet.rv :true success
 bool PCAPAdapter::recv(NetPacket* pkt)
 {
+	if (!pcap_io_blocking && NetAdapter::recv(pkt))
+		return true;
+
 	int size = pcap_io_recv(pkt->buffer, sizeof(pkt->buffer));
-	if (size <= 0)
+	if (size > 0 && VerifyPkt(pkt, size))
 	{
-		return false;
+		InspectRecv(pkt);
+		return true;
 	}
 	else
-	{
-		return VerifyPkt(pkt, size);
-	}
+		return false;
 }
 //sends the packet .rv :true success
 bool PCAPAdapter::send(NetPacket* pkt)
 {
+	InspectSend(pkt);
 	if (NetAdapter::send(pkt))
 		return true;
 
@@ -436,14 +456,14 @@ void PCAPAdapter::reloadSettings()
 #ifdef _WIN32
 	IP_ADAPTER_ADDRESSES adapter;
 	std::unique_ptr<IP_ADAPTER_ADDRESSES[]> buffer;
-	if (PCAPGetWin32Adapter(config.Eth, &adapter, &buffer))
+	if (PCAPGetWin32Adapter(EmuConfig.DEV9.EthDevice, &adapter, &buffer))
 		ReloadInternalServer(&adapter);
 	else
 		ReloadInternalServer(nullptr);
 #elif defined(__POSIX__)
 	ifaddrs adapter;
 	ifaddrs* buffer;
-	if (PCAPGetIfAdapter(config.Eth, &adapter, &buffer))
+	if (PCAPGetIfAdapter(EmuConfig.DEV9.EthDevice, &adapter, &buffer))
 	{
 		ReloadInternalServer(&adapter);
 		freeifaddrs(buffer);
@@ -479,32 +499,30 @@ std::vector<AdapterEntry> PCAPAdapter::GetAdapters()
 	while (d != NULL)
 	{
 		AdapterEntry entry;
-		entry.type = NetApi::PCAP_Switched;
+		entry.type = Pcsx2Config::DEV9Options::NetApi::PCAP_Switched;
 #ifdef _WIN32
 		//guid
-		wchar_t wEth[sizeof(config.Eth)] = {0};
-		mbstowcs(wEth, d->name, sizeof(config.Eth) - 1);
-		entry.guid = std::wstring(wEth);
+		entry.guid = std::string(d->name);
 
 		IP_ADAPTER_ADDRESSES adapterInfo;
 		std::unique_ptr<IP_ADAPTER_ADDRESSES[]> buffer;
 
-		if (PCAPGetWin32Adapter(d->name, &adapterInfo, &buffer))
-			entry.name = std::wstring(adapterInfo.FriendlyName);
+		if (PCAPGetWin32Adapter(entry.guid, &adapterInfo, &buffer))
+			entry.name = StringUtil::WideStringToUTF8String(std::wstring(adapterInfo.FriendlyName));
 		else
 		{
 			//have to use description
 			//NPCAP 1.10 is using an version of pcap that dosn't
 			//allow us to set it to use UTF8
 			//see https://github.com/nmap/npcap/issues/276
-			//But use MultiByteToWideChar so we can later switch to UTF8
-			int len_desc = strlen(d->description) + 1;
-			int len_buf = MultiByteToWideChar(CP_ACP, 0, d->description, len_desc, nullptr, 0);
+			//We have to convert from ANSI to wstring, to then convert to UTF8
+			const int len_desc = strlen(d->description) + 1;
+			const int len_buf = MultiByteToWideChar(CP_ACP, 0, d->description, len_desc, nullptr, 0);
 
-			wchar_t* buf = new wchar_t[len_buf];
-			MultiByteToWideChar(CP_ACP, 0, d->description, len_desc, buf, len_buf);
-			entry.name = std::wstring(buf);
-			delete[] buf;
+			std::unique_ptr<wchar_t[]> buf = std::make_unique<wchar_t[]>(len_buf);
+			MultiByteToWideChar(CP_ACP, 0, d->description, len_desc, buf.get(), len_buf);
+			
+			entry.name = StringUtil::WideStringToUTF8String(std::wstring(buf.get()));
 		}
 #else
 		entry.name = std::string(d->name);
@@ -512,7 +530,7 @@ std::vector<AdapterEntry> PCAPAdapter::GetAdapters()
 #endif
 
 		nic.push_back(entry);
-		entry.type = NetApi::PCAP_Bridged;
+		entry.type = Pcsx2Config::DEV9Options::NetApi::PCAP_Bridged;
 		nic.push_back(entry);
 		d = d->next;
 	}

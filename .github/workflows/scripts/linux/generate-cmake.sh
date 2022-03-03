@@ -3,8 +3,8 @@
 set -e
 
 if [ "${COMPILER}" = "gcc" ]; then
-  export CC=gcc
-  export CXX=g++
+  export CC=gcc-10
+  export CXX=g++-10
 else
   export CC=clang
   export CXX=clang++
@@ -20,10 +20,10 @@ cmake                                       \
 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache        \
 -DCMAKE_BUILD_TYPE=Release                  \
 -DPACKAGE_MODE=TRUE                         \
+-DWAYLAND_API=TRUE                          \
 -DDISABLE_ADVANCE_SIMD=TRUE                 \
--DCMAKE_INSTALL_LIBDIR="/tmp/"              \
--DCMAKE_INSTALL_DATADIR="/tmp/"             \
--DCMAKE_INSTALL_DOCDIR="/tmp/PCSX2"         \
+-DDISABLE_PCSX2_WRAPPER=TRUE                \
+-DCMAKE_INSTALL_PREFIX="squashfs-root/usr/" \
 -DOpenGL_GL_PREFERENCE="LEGACY"             \
 -DOPENGL_opengl_LIBRARY=""                  \
 -DXDG_STD=TRUE                              \

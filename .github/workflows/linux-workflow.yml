@@ -6,59 +6,36 @@ on:
   push:
     branches:
       - master
-    paths-ignore:
-      - '**/*.md'
-      - '**/*.bat'
-      - '**/*.cmd'
-      - '**/*.props'
-      - '**/*.sln'
-      - '.clang-format'
-      - '.codacy.yaml'
-      - '.github/*'
-      - '.github/workflows/lint-gamedb.yml'
-      - '.github/workflows/macos-workflow.yml'
-      - '.github/workflows/pr-triage.yml'
-      - '.github/workflows/scripts/windows/**'
-      - '.github/workflows/scripts/validation/**'
-      - '.github/workflows/windows-workflow.yml'
-      - '.gitignore'
-      - 'bin/PCSX2_keys.ini.default'
-      - 'build.sh'
-      - 'buildbot.xml'
-      - 'pcsx2/CDVD/Windows/**'
-      - 'pcsx2/DEV9/Win32/**'
-      - 'pcsx2/PAD/Windows/**'
-      - 'pcsx2/SPU2/Windows/**'
-      - 'pcsx2/USB/Win32/**'
-      - 'pcsx2/windows/**'
+    tags:
+      - v*
   pull_request:
     branches:
       - master
     paths-ignore:
-      - '**/*.md'
-      - '**/*.bat'
-      - '**/*.cmd'
-      - '**/*.props'
-      - '**/*.sln'
-      - '.clang-format'
-      - '.codacy.yaml'
-      - '.github/*'
-      - '.github/workflows/lint-gamedb.yml'
-      - '.github/workflows/macos-workflow.yml'
-      - '.github/workflows/pr-triage.yml'
-      - '.github/workflows/scripts/windows/**'
-      - '.github/workflows/scripts/validation/**'
-      - '.github/workflows/windows-workflow.yml'
-      - '.gitignore'
-      - 'bin/PCSX2_keys.ini.default'
-      - 'build.sh'
-      - 'buildbot.xml'
-      - 'pcsx2/CDVD/Windows/**'
-      - 'pcsx2/DEV9/Win32/**'
-      - 'pcsx2/PAD/Windows/**'
-      - 'pcsx2/SPU2/Windows/**'
-      - 'pcsx2/USB/Win32/**'
-      - 'pcsx2/windows/**'
+      - "**/*.md"
+      - "**/*.bat"
+      - "**/*.cmd"
+      - "**/*.props"
+      - "**/*.sln"
+      - ".clang-format"
+      - ".codacy.yaml"
+      - ".github/*"
+      - ".github/workflows/lint-gamedb.yml"
+      - ".github/workflows/macos-workflow.yml"
+      - ".github/workflows/pr-triage.yml"
+      - ".github/workflows/scripts/windows/**"
+      - ".github/workflows/scripts/validation/**"
+      - ".github/workflows/windows-workflow.yml"
+      - ".gitignore"
+      - "bin/PCSX2_keys.ini.default"
+      - "build.sh"
+      - "buildbot.xml"
+      - "pcsx2/CDVD/Windows/**"
+      - "pcsx2/DEV9/Win32/**"
+      - "pcsx2/PAD/Windows/**"
+      - "pcsx2/SPU2/Windows/**"
+      - "pcsx2/USB/Win32/**"
+      - "pcsx2/windows/**"
 
 jobs:
   build:
@@ -70,11 +47,13 @@ jobs:
           - os: ubuntu-18.04
             platform: x86
             compiler: gcc
+            cmakeflags: -DLTO_PCSX2_CORE=ON
             appimage: true
             experimental: false
           - os: ubuntu-18.04
             platform: x64
             compiler: gcc
+            cmakeflags: -DLTO_PCSX2_CORE=ON
             appimage: true
             experimental: false
           - os: ubuntu-18.04
@@ -84,25 +63,28 @@ jobs:
             # (PCH conflicts with ccache, fixed by https://gitlab.kitware.com/cmake/cmake/-/merge_requests/4400)
             cmakeflags: -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON
             detail: " nopch"
+            appimage: false
             experimental: false
           - os: ubuntu-18.04
             platform: x86
             compiler: gcc
             cmakeflags: -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON
             detail: " nopch"
+            appimage: false
             experimental: false
           - os: ubuntu-18.04
             platform: x86
             compiler: gcc
             cmakeflags: -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON -DARCH_FLAG=-march=haswell
             detail: " avx2 nopch"
+            appimage: false
             experimental: false
 
     name: ${{ matrix.platform }} | ${{ matrix.compiler }}${{ matrix.detail }}
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.experimental }}
     # Set some sort of timeout in the event of run-away builds.  We are limited on concurrent jobs so, get rid of them.
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     env:
       CCACHE_BASEDIR: ${{ github.workspace }}
@@ -110,6 +92,8 @@ jobs:
       CCACHE_COMPRESS: true
       CCACHE_COMPRESSLEVEL: 9
       CCACHE_MAXSIZE: 100M
+      SDL: SDL2-2.0.16
+      PATCHELF_VERSION: 0.12
 
     steps:
       # NOTE - useful for debugging
@@ -167,12 +151,43 @@ jobs:
           TRIMMED_ARTIFACT_NAME=$(printf "%.199s]" "$ARTIFACT_NAME")
           echo "name=$TRIMMED_ARTIFACT_NAME"
           echo "##[set-output name=name;]${TRIMMED_ARTIFACT_NAME}"
-          
+          echo "##[set-output name=arch;]${ARCH}"
+
       - name: Install Packages
         env:
           PLATFORM: ${{ matrix.platform }}
           COMPILER: ${{ matrix.compiler }}
         run: .github/workflows/scripts/linux/install-packages.sh
+
+      - name: Cache Dependencies
+        uses: actions/cache@v2.1.7
+        with:
+          path: |
+            3rdparty/${{ env.SDL }}
+            3rdparty/patchelf-${{ env.PATCHELF_VERSION }}
+          key: ${{ matrix.os }} ${{ matrix.platform }} ${{ env.SDL }} patchelf-${{ env.PATCHELF_VERSION }}
+
+      - name: Build Dependencies
+        run: |
+          if [[ ! -e 3rdparty/patchelf-${{ env.PATCHELF_VERSION }} ]]; then
+            curl -sSfL https://github.com/NixOS/patchelf/releases/download/${{ env.PATCHELF_VERSION }}/patchelf-${{ env.PATCHELF_VERSION }}.tar.bz2 | tar -xjC 3rdparty
+            mv 3rdparty/patchelf-${{ env.PATCHELF_VERSION }}* 3rdparty/patchelf-${{ env.PATCHELF_VERSION }}
+            cd 3rdparty/patchelf-${{ env.PATCHELF_VERSION }}
+            ./configure
+            make && cd ../../
+          fi
+          sudo make -C 3rdparty/patchelf-${{ env.PATCHELF_VERSION }} install
+          if [[ ! -e 3rdparty/${{ env.SDL }} ]]; then
+            curl -sL https://libsdl.org/release/${{ env.SDL }}.tar.gz | tar -xzC 3rdparty
+            cd 3rdparty/${{ env.SDL }}
+            if [ "${{ matrix.platform }}" == "x86" ]; then
+              ./configure --build=i686-pc-linux-gnu CC=${{ matrix.compiler }} CFLAGS=-m32 CXXFLAGS=-m32 LDFLAGS=-m32 --prefix=/usr --libdir=/usr/lib/i386-linux-gnu
+            else
+              ./configure --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu
+            fi
+            make -j $(getconf _NPROCESSORS_ONLN) && cd ../../
+          fi
+          sudo make -C 3rdparty/${{ env.SDL }} install
 
       - name: Generate CMake
         env:
@@ -188,18 +203,37 @@ jobs:
       - name: Run Tests
         working-directory: ./build
         run: ninja unittests
-        
+
       - name: Package AppImage
+        if: matrix.appimage == true
         env:
           PLATFORM: ${{ matrix.platform }}
           COMPILER: ${{ matrix.compiler }}
           name: ${{ steps.artifact-metadata.outputs.name }}
         run: .github/workflows/scripts/linux/appimage.sh
-        if: ${{ matrix.appimage }}
 
       - name: Upload artifact
+        if: matrix.appimage == true
         uses: actions/upload-artifact@v2
         with:
           name: ${{ steps.artifact-metadata.outputs.name }}
-          path: artifacts
-        if: ${{ matrix.appimage }}
+          path: ci-artifacts
+
+      # ---- Release / Tagging related steps ----
+      - name: Prepare Build Artifacts
+        if: github.repository == 'PCSX2/pcsx2' && startsWith(github.ref, 'refs/tags/') && matrix.appimage == true
+        run: |
+          mv ./ci-artifacts/*.AppImage ./ci-artifacts/linux-AppImage-${{ steps.artifact-metadata.outputs.arch }}.AppImage
+          ls ./ci-artifacts/
+
+      - name: Upload Assets and Potential Publish Release
+        if: github.repository == 'PCSX2/pcsx2' && startsWith(github.ref, 'refs/tags/') && matrix.appimage == true
+        env:
+          GITHUB_TOKEN: ${{ secrets.BOT_PAT }}
+          ASSET_DIR: ${{ github.WORKSPACE }}/ci-artifacts
+          ASSET_EXTENSION: AppImage
+          TAG_TO_SEARCH_FOR: ${{ github.REF }}
+        run: |
+          cd ./.github/workflows/scripts/releases/upload-release-artifacts
+          npm ci
+          node index.js

@@ -48,8 +48,7 @@ Thumbs.db
 Debug.txt
 install_log.txt
 padLog.txt
-GS_opengl_debug_hw.txt
-GS_opengl_debug_sw.txt
+GS_opengl_debug.txt
 
 Debug
 Release
@@ -73,13 +72,17 @@ oprofile_data/
 /bin/**/*.ilk
 /bin/**/*.lib
 /bin/**/*.pdb
-/bin/PCSX2
+/bin/pcsx2
 /bin/PCSX2-linux.sh
 /bin/*ReplayLoader
-/bin/PCSX2-linux.sh
 /bin/GS*.txt
+/bin/qt.conf
 /bin/bios
+/bin/cache
+/bin/cheats
+/bin/covers
 /bin/dumps
+/bin/gamesettings
 /bin/help
 /bin/inis
 /bin/logs
@@ -87,6 +90,7 @@ oprofile_data/
 /bin/plugins
 /bin/snaps
 /bin/sstates
+/bin/translations
 /deps
 /ipch
 
@@ -114,3 +118,5 @@ oprofile_data/
 
 /out/build/x64-Debug (default)
 CMakeSettings.json
+/ci-artifacts/
+/out/

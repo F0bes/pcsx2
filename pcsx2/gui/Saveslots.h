@@ -43,7 +43,7 @@ static const int StateSlotsCount = 10;
 class Saveslot
 {
 public:
-	u32 slot_num;
+	int slot_num;
 	bool empty;
 	wxDateTime updated;
 	u32 crc;
@@ -68,14 +68,14 @@ public:
 
 	bool isUsed()
 	{
-		return wxFileExists(SaveStateBase::GetFilename(slot_num));
+		return wxFileExists(SaveStateBase::GetSavestateFolder(slot_num, false));
 	}
 
 	wxDateTime GetTimestamp()
 	{
 		if (!isUsed()) return wxInvalidDateTime;
 
-		return wxDateTime(wxFileModificationTime(SaveStateBase::GetFilename(slot_num)));
+		return wxDateTime(wxFileModificationTime(SaveStateBase::GetSavestateFolder(slot_num, false)));
 	}
 
 	void UpdateCache()

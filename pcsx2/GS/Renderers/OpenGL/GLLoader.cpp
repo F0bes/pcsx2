@@ -15,22 +15,9 @@
 
 #include "PrecompiledHeader.h"
 #include "GLLoader.h"
-#include "GS.h"
-
-#ifdef __APPLE__
-#  undef glScissorIndexed
-#  undef glViewportIndexedf
-PFNGLSCISSORINDEXEDPROC   gs_glScissorIndexed   = glScissorIndexed;
-PFNGLVIEWPORTINDEXEDFPROC gs_glViewportIndexedf = glViewportIndexedf;
-#  define glScissorIndexed   gs_glScissorIndexed
-#  define glViewportIndexedf gs_glViewportIndexedf
-#endif
-#ifdef __unix__
-PFNGLBLENDFUNCSEPARATEPROC glBlendFuncSeparate = NULL;
-#endif
-PFNGLTEXTUREPAGECOMMITMENTEXTPROC glTexturePageCommitmentEXT = NULL;
-
-#include "PFN_GLLOADER_CPP.h"
+#include "GS/GS.h"
+#include <unordered_set>
+#include "Host.h"
 
 namespace GLExtension
 {
@@ -96,10 +83,10 @@ namespace Emulate_DSA
 		glTexSubImage2D(GL_TEXTURE_2D, level, xoffset, yoffset, width, height, format, type, pixels);
 	}
 
-	void APIENTRY CopyTextureSubImage(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height)
+	void APIENTRY CompressedTextureSubImage(GLuint texture, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void* data)
 	{
 		BindTextureUnit(7, texture);
-		glCopyTexSubImage2D(GL_TEXTURE_2D, level, xoffset, yoffset, x, y, width, height);
+		glCompressedTexSubImage2D(GL_TEXTURE_2D, level, xoffset, yoffset, width, height, format, imageSize, data);
 	}
 
 	void APIENTRY GetTexureImage(GLuint texture, GLint level, GLenum format, GLenum type, GLsizei bufSize, void* pixels)
@@ -140,7 +127,7 @@ namespace Emulate_DSA
 		glCreateTextures = CreateTexture;
 		glTextureStorage2D = TextureStorage;
 		glTextureSubImage2D = TextureSubImage;
-		glCopyTextureSubImage2D = CopyTextureSubImage;
+		glCompressedTextureSubImage2D = CompressedTextureSubImage;
 		glGetTextureImage = GetTexureImage;
 		glTextureParameteri = TextureParameteri;
 
@@ -161,41 +148,31 @@ namespace GLLoader
 
 	bool s_first_load = true;
 
-	bool amd_legacy_buggy_driver = false;
 	bool vendor_id_amd = false;
 	bool vendor_id_nvidia = false;
 	bool vendor_id_intel = false;
 	bool mesa_driver = false;
 	bool in_replayer = false;
-	bool buggy_sso_dual_src = false;
 
 	bool found_geometry_shader = true; // we require GL3.3 so geometry must be supported by default
 	bool found_GL_ARB_clear_texture = false;
-	bool found_GL_ARB_get_texture_sub_image = false; // Not yet used
 	// DX11 GPU
 	bool found_GL_ARB_gpu_shader5 = false;             // Require IvyBridge
 	bool found_GL_ARB_shader_image_load_store = false; // Intel IB. Nvidia/AMD miss Mesa implementation.
-	bool found_GL_ARB_shader_storage_buffer_object = false;
-	bool found_GL_ARB_compute_shader = false;
-	bool found_GL_ARB_texture_view = false; // maybe older gpu can support it ?
-
-	// Mandatory in the future
-	bool found_GL_ARB_multi_bind = false;
-	bool found_GL_ARB_vertex_attrib_binding = false;
 
 	// In case sparse2 isn't supported
 	bool found_compatible_GL_ARB_sparse_texture2 = false;
 	bool found_compatible_sparse_depth = false;
 
-	static void mandatory(const std::string& ext)
+	static bool mandatory(const std::string& ext)
 	{
 		if (!GLExtension::Has(ext))
 		{
-			fprintf(stderr, "ERROR: %s is NOT SUPPORTED\n", ext.c_str());
-			throw GSRecoverableError();
+			Host::ReportFormattedErrorAsync("GS", "ERROR: %s is NOT SUPPORTED\n", ext.c_str());
+			return false;
 		}
 
-		return;
+		return true;
 	}
 
 	static bool optional(const std::string& name)
@@ -224,48 +201,20 @@ namespace GLLoader
 		return found;
 	}
 
-	void check_gl_version(int major, int minor)
+	bool check_gl_version(int major, int minor)
 	{
-		const GLubyte* s = glGetString(GL_VERSION);
-		if (s == NULL)
-		{
-			fprintf(stderr, "Error: GLLoader failed to get GL version\n");
-			throw GSRecoverableError();
-		}
-		GLuint v = 1;
-		while (s[v] != '\0' && s[v - 1] != ' ')
-			v++;
-
 		const char* vendor = (const char*)glGetString(GL_VENDOR);
-		fprintf_once(stdout, "OpenGL information. GPU: %s. Vendor: %s. Driver: %s\n", glGetString(GL_RENDERER), vendor, &s[v]);
-
-		// Name changed but driver is still bad!
 		if (strstr(vendor, "Advanced Micro Devices") || strstr(vendor, "ATI Technologies Inc.") || strstr(vendor, "ATI"))
 			vendor_id_amd = true;
-		/*if (vendor_id_amd && (
-				strstr((const char*)&s[v], " 10.") || // Blacklist all 2010 AMD drivers.
-				strstr((const char*)&s[v], " 11.") || // Blacklist all 2011 AMD drivers.
-				strstr((const char*)&s[v], " 12.") || // Blacklist all 2012 AMD drivers.
-				strstr((const char*)&s[v], " 13.") || // Blacklist all 2013 AMD drivers.
-				strstr((const char*)&s[v], " 14.") || // Blacklist all 2014 AMD drivers.
-				strstr((const char*)&s[v], " 15.") || // Blacklist all 2015 AMD drivers.
-				strstr((const char*)&s[v], " 16.") || // Blacklist all 2016 AMD drivers.
-				strstr((const char*)&s[v], " 17.") // Blacklist all 2017 AMD drivers for now.
-				))
-			amd_legacy_buggy_driver = true;
-		*/
-		if (strstr(vendor, "NVIDIA Corporation"))
+		else if (strstr(vendor, "NVIDIA Corporation"))
 			vendor_id_nvidia = true;
-
 #ifdef _WIN32
-		if (strstr(vendor, "Intel"))
+		else if (strstr(vendor, "Intel"))
 			vendor_id_intel = true;
 #else
 		// On linux assumes the free driver if it isn't nvidia or amd pro driver
 		mesa_driver = !vendor_id_nvidia && !vendor_id_amd;
 #endif
-		// As of 2019 SSO is still broken on intel (Kaby Lake confirmed).
-		buggy_sso_dual_src = vendor_id_intel || vendor_id_amd /*|| amd_legacy_buggy_driver*/;
 
 		if (theApp.GetConfigI("override_geometry_shader") != -1)
 		{
@@ -280,12 +229,14 @@ namespace GLLoader
 		glGetIntegerv(GL_MINOR_VERSION, &minor_gl);
 		if ((major_gl < major) || (major_gl == major && minor_gl < minor))
 		{
-			fprintf(stderr, "OpenGL %d.%d is not supported. Only OpenGL %d.%d\n was found", major, minor, major_gl, minor_gl);
-			throw GSRecoverableError();
+			Host::ReportFormattedErrorAsync("GS", "OpenGL %d.%d is not supported. Only OpenGL %d.%d\n was found", major, minor, major_gl, minor_gl);
+			return false;
 		}
+
+		return true;
 	}
 
-	void check_gl_supported_extension()
+	bool check_gl_supported_extension()
 	{
 		int max_ext = 0;
 		glGetIntegerv(GL_NUM_EXTENSIONS, &max_ext);
@@ -297,24 +248,27 @@ namespace GLLoader
 		}
 
 		// Mandatory for both renderer
+		bool ok = true;
 		{
 			// GL4.1
-			mandatory("GL_ARB_separate_shader_objects");
+			ok = ok && mandatory("GL_ARB_separate_shader_objects");
 			// GL4.2
-			mandatory("GL_ARB_shading_language_420pack");
-			mandatory("GL_ARB_texture_storage");
+			ok = ok && mandatory("GL_ARB_shading_language_420pack");
+			ok = ok && mandatory("GL_ARB_texture_storage");
 			// GL4.3
-			mandatory("GL_KHR_debug");
+			ok = ok && mandatory("GL_KHR_debug");
 			// GL4.4
-			mandatory("GL_ARB_buffer_storage");
+			ok = ok && mandatory("GL_ARB_buffer_storage");
 		}
 
 		// Only for HW renderer
-		if (theApp.GetCurrentRendererType() == GSRendererType::OGL_HW)
+		if (GSConfig.UseHardwareRenderer())
 		{
-			mandatory("GL_ARB_copy_image");
-			mandatory("GL_ARB_clip_control");
+			ok = ok && mandatory("GL_ARB_copy_image");
+			ok = ok && mandatory("GL_ARB_clip_control");
 		}
+		if (!ok)
+			return false;
 
 		// Extra
 		{
@@ -325,20 +279,13 @@ namespace GLLoader
 			found_GL_ARB_gpu_shader5 = optional("GL_ARB_gpu_shader5");
 			// GL4.2
 			found_GL_ARB_shader_image_load_store = optional("GL_ARB_shader_image_load_store");
-			// GL4.3
-			found_GL_ARB_compute_shader = optional("GL_ARB_compute_shader");
-			found_GL_ARB_shader_storage_buffer_object = optional("GL_ARB_shader_storage_buffer_object");
-			found_GL_ARB_texture_view = optional("GL_ARB_texture_view");
-			found_GL_ARB_vertex_attrib_binding = optional("GL_ARB_vertex_attrib_binding");
 			// GL4.4
 			found_GL_ARB_clear_texture = optional("GL_ARB_clear_texture");
-			found_GL_ARB_multi_bind = optional("GL_ARB_multi_bind");
 			// GL4.5
 			optional("GL_ARB_direct_state_access");
 			// Mandatory for the advance HW renderer effect. Unfortunately Mesa LLVMPIPE/SWR renderers doesn't support this extension.
 			// Rendering might be corrupted but it could be good enough for test/virtual machine.
 			optional("GL_ARB_texture_barrier");
-			found_GL_ARB_get_texture_sub_image = optional("GL_ARB_get_texture_sub_image");
 		}
 
 		if (vendor_id_amd)
@@ -376,6 +323,8 @@ namespace GLLoader
 			Emulate_DSA::Init();
 		}
 #endif
+
+		return true;
 	}
 
 	bool is_sparse2_compatible(const char* name, GLenum internal_fmt, int x_max, int y_max)
@@ -442,11 +391,13 @@ namespace GLLoader
 		fprintf_once(stdout, "INFO: sparse depth texture is %s\n", found_compatible_sparse_depth ? "available" : "NOT SUPPORTED");
 	}
 
-	void check_gl_requirements()
+	bool check_gl_requirements()
 	{
-		check_gl_version(3, 3);
+		if (!check_gl_version(3, 3))
+			return false;
 
-		check_gl_supported_extension();
+		if (!check_gl_supported_extension())
+			return false;
 
 		// Bonus for sparse texture
 		check_sparse_compatibility();
@@ -454,5 +405,6 @@ namespace GLLoader
 		fprintf_once(stdout, "\n");
 
 		s_first_load = false;
+		return true;
 	}
 } // namespace GLLoader

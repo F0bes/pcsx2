@@ -1,7 +1,7 @@
 import yaml
 
 # Assumes this is ran from the root of the repository
-file_path = "./bin/GameIndex.yaml"
+file_path = "./bin/resources/GameIndex.yaml"
 
 # These settings have to be manually kept in sync with the emulator code unfortunately.
 # up to date validation should ALWAYS be provided via the application!
@@ -32,9 +32,9 @@ allowed_game_fixes = [
     "VIF1StallHack",
     "GIFFIFOHack",
     "GoemonTlbHack",
-    "VUKickstartHack",
+    "VUSyncHack",
     "IbitHack",
-    "RatchetDynaHack",
+    "VUOverflowHack",
 ]
 allowed_speed_hacks = ["mvuFlagSpeedHack", "InstantVU1SpeedHack"]
 # Patches are allowed to have a 'default' key or a crc-32 key, followed by

@@ -23,11 +23,7 @@
 #include "System/SysThreads.h"
 #include "DEV9/DEV9.h"
 #include "USB/USB.h"
-#ifdef _WIN32
-#include "PAD/Windows/PAD.h"
-#else
-#include "PAD/Linux/PAD.h"
-#endif
+#include "PAD/Gamepad.h"
 
 #include "ConsoleLogger.h"
 #include "MainFrame.h"
@@ -51,16 +47,14 @@
 
 using namespace Dialogs;
 
-extern std::atomic_bool init_gspanel;
-
 void MainEmuFrame::Menu_SysSettings_Click(wxCommandEvent& event)
 {
 	AppOpenModalDialog<SysConfigDialog>(wxEmptyString, this);
 }
 
-void MainEmuFrame::Menu_IPC_Settings_Click(wxCommandEvent& event)
+void MainEmuFrame::Menu_PINE_Settings_Click(wxCommandEvent& event)
 {
-	AppOpenDialog<IPCDialog>(this);
+	AppOpenDialog<PINEDialog>(this);
 }
 
 void MainEmuFrame::Menu_AudioSettings_Click(wxCommandEvent& event)
@@ -92,29 +86,30 @@ void MainEmuFrame::Menu_PADSettings_Click(wxCommandEvent& event)
 
 void MainEmuFrame::Menu_GSSettings_Click(wxCommandEvent& event)
 {
-	ScopedCoreThreadPause paused_core;
-	bool is_frame_init = !(wxGetApp().GetGsFramePtr() == nullptr);
-	bool need_shutdown = GetMTGS().IsClosed();
-	init_gspanel = false;
-	freezeData fP = {0, nullptr};
-	MTGS_FreezeData sstate = {&fP, 0};
-	if (is_frame_init)
-	{
-		GetMTGS().Freeze(FreezeAction::Size, sstate);
-		fP.data = new u8[fP.size];
-		GetMTGS().Freeze(FreezeAction::Save, sstate);
-		GetMTGS().Suspend(true);
-	}
 	GSconfigure();
-	if (is_frame_init)
+
+	// this is a bit of an ugly hack, but so is the whole of the threading nonsense.
+	// we need to tear down USB/PAD before we apply settings, because the window handle
+	// will change on renderer change. but we can't do that in ApplySettings() because
+	// that happens on the UI thread instead of the core thread....
+	GSFrame* gs_frame = wxGetApp().GetGsFramePtr();
+	const bool gs_frame_open = gs_frame && gs_frame->IsShown();
+	const Pcsx2Config::GSOptions old_options(g_Conf->EmuOptions.GS);
+	g_Conf->EmuOptions.GS.ReloadIniSettings();
+	if (!g_Conf->EmuOptions.GS.RestartOptionsAreEqual(old_options))
 	{
-		GetMTGS().Freeze(FreezeAction::Load, sstate);
-		delete[] fP.data;
+		ScopedCoreThreadPause pauser(static_cast<SystemsMask>(System_USB | System_PAD));
+		wxGetApp().SysApplySettings();
 	}
-	if (need_shutdown)
-		GetMTGS().Suspend(true);
-	init_gspanel = true;
-	paused_core.AllowResume();
+	else
+	{
+		wxGetApp().SysApplySettings();
+	}
+
+	// re-hide the GS window after changing renderers if we were paused
+	gs_frame = wxGetApp().GetGsFramePtr();
+	if (!gs_frame_open && gs_frame && gs_frame->IsShown())
+		gs_frame->Hide();
 }
 
 void MainEmuFrame::Menu_WindowSettings_Click(wxCommandEvent& event)
@@ -583,6 +578,46 @@ void MainEmuFrame::Menu_IsoClear_Click(wxCommandEvent& event)
 	}
 }
 
+void MainEmuFrame::Menu_IsoClearMissing_Click(wxCommandEvent& event)
+{
+	auto& iso_manager = wxGetApp().GetRecentIsoManager();
+	const auto& missing_files = iso_manager.GetMissingFiles();
+
+	if (missing_files.empty())
+	{
+		wxDialogWithHelpers dialog(this, _("Information"));
+		dialog += dialog.Heading(_("No files to remove."));
+		pxIssueConfirmation(dialog, MsgButtons().OK());
+	}
+	else
+	{
+		wxDialogWithHelpers dialog(this, _("Confirm clearing ISO list"));
+		dialog += dialog.Heading(_("The following entries will be removed from the ISO list. Continue?"));
+
+		wxString missing_files_list;
+
+		for (const auto& file : missing_files)
+		{
+			missing_files_list += "* ";
+			missing_files_list += file.Filename;
+			missing_files_list += "\n";
+		}
+
+		dialog += dialog.Text(missing_files_list);
+
+		const bool confirmed = pxIssueConfirmation(dialog, MsgButtons().YesNo()) == wxID_YES;
+
+		if (confirmed)
+		{
+			// If the CDVD mode is not ISO, or the system isn't running, wipe the CurrentIso field in INI file
+			if (g_Conf->CdvdSource != CDVD_SourceType::Iso || !SysHasValidState())
+				SysUpdateIsoSrcFile("");
+			iso_manager.ClearMissing();
+			AppSaveSettings();
+		}
+	}
+}
+
 void MainEmuFrame::Menu_Ask_On_Boot_Click(wxCommandEvent& event)
 {
 	g_Conf->AskOnBoot = event.IsChecked();
@@ -638,9 +673,9 @@ void MainEmuFrame::Menu_EnableCheats_Click(wxCommandEvent&)
 	AppSaveSettings();
 }
 
-void MainEmuFrame::Menu_IPC_Enable_Click(wxCommandEvent&)
+void MainEmuFrame::Menu_PINE_Enable_Click(wxCommandEvent&)
 {
-	g_Conf->EmuOptions.EnableIPC = GetMenuBar()->IsChecked(MenuId_IPC_Enable);
+	g_Conf->EmuOptions.EnablePINE = GetMenuBar()->IsChecked(MenuId_PINE_Enable);
 	AppApplySettings();
 	AppSaveSettings();
 }
@@ -1016,7 +1051,7 @@ void MainEmuFrame::Menu_Capture_Screenshot_Screenshot_As_Click(wxCommandEvent& e
 	// Ensure emulation is paused so that the correct image is captured
 	bool wasPaused = CoreThread.IsPaused();
 	if (!wasPaused)
-		CoreThread.Pause();
+		CoreThread.Pause({});
 
 	wxFileDialog fileDialog(this, _("Select a file"), g_Conf->Folders.Snapshots.ToAscii(), wxEmptyString, "PNG files (*.png)|*.png", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
 
@@ -1114,7 +1149,7 @@ void MainEmuFrame::Menu_Recording_Config_FrameAdvance(wxCommandEvent& event)
 		g_Conf->inputRecording.m_frame_advance_amount = result;
 		g_InputRecordingControls.setFrameAdvanceAmount(result);
 		wxString frame_advance_label = wxString(_("Configure Frame Advance"));
-		frame_advance_label.Append(fmt::format(" ({})", result));
+		frame_advance_label.Append(wxString::Format(" (%ld)", result));
 		m_submenu_recording_settings.SetLabel(MenuId_Recording_Config_FrameAdvance, frame_advance_label);
 	}
 }

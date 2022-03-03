@@ -17,18 +17,13 @@
 #pragma once
 
 #include "AppCommon.h"
-#include "CpuUsageProvider.h"
+#include "common/WindowInfo.h"
 #include <memory>
+#include <optional>
 
-
-enum LimiterModeType
-{
-	Limit_Nominal,
-	Limit_Turbo,
-	Limit_Slomo,
-};
-
-extern LimiterModeType g_LimiterMode;
+#ifdef WAYLAND_API
+#include <wayland-client.h>
+#endif
 
 // --------------------------------------------------------------------------------------
 //  GSPanel
@@ -51,6 +46,8 @@ public:
 	GSPanel( wxWindow* parent );
 	virtual ~GSPanel();
 
+	std::optional<WindowInfo> GetWindowInfo();
+
 	void DoShowMouse();
 	void DirectKeyCommand( wxKeyEvent& evt );
 	void DirectKeyCommand( const KeyAcceleratorCode& kac );
@@ -64,8 +61,7 @@ public:
 protected:
 	void AppStatusEvent_OnSettingsApplied();
 
-	void OnCloseWindow( wxCloseEvent& evt );
-	void OnResize(wxSizeEvent& event);
+	void OnResize(wxEvent& event);
 	void OnMouseEvent( wxMouseEvent& evt );
 	void OnHideMouseTimeout( wxTimerEvent& evt );
 	void OnKeyDownOrUp( wxKeyEvent& evt );
@@ -77,6 +73,20 @@ protected:
 	void OnLeftDclick( wxMouseEvent& evt );
 
 	void UpdateScreensaver();
+
+private:
+#ifdef WAYLAND_API
+  static void WaylandGlobalRegistryAddHandler(void* data, wl_registry* registry, uint32_t id, const char* interface, uint32_t version);
+  static void WaylandGlobalRegistryRemoveHandler(void* data, wl_registry* registry, uint32_t id);
+
+  bool WaylandCreateSubsurface(wl_display* display, wl_surface* parent_surface);
+  void WaylandDestroySubsurface();
+
+  wl_compositor* m_wl_compositor = nullptr;
+  wl_subcompositor* m_wl_subcompositor = nullptr;
+  wl_surface* m_wl_child_surface = nullptr;
+  wl_subsurface* m_wl_child_subsurface = nullptr;
+#endif
 };
 
 
@@ -94,8 +104,6 @@ protected:
 	wxWindowID				m_id_gspanel;
 	wxStatusBar*			m_statusbar;
 
-	CpuUsageProvider		m_CpuUsage;
-
 public:
 	GSFrame( const wxString& title);
 	virtual ~GSFrame() = default;
@@ -109,6 +117,7 @@ public:
 
 protected:
 	void OnCloseWindow( wxCloseEvent& evt );
+	void OnDestroyWindow( wxWindowDestroyEvent& evt );
 	void OnMove( wxMoveEvent& evt );
 	void OnResize( wxSizeEvent& evt );
 	void OnFocus( wxFocusEvent& evt );

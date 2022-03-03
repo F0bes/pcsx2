@@ -17,6 +17,8 @@
 #include "PrecompiledHeader.h"
 #include "Common.h"
 
+#include "common/StringUtil.h"
+#include "ps2/BiosTools.h"
 #include "R5900.h"
 #include "R3000A.h"
 #include "ps2/pgif.h" // pgif init
@@ -24,7 +26,11 @@
 #include "COP0.h"
 #include "MTVU.h"
 
+#ifndef PCSX2_CORE
 #include "System/SysThreads.h"
+#else
+#include "VMManager.h"
+#endif
 #include "R5900Exceptions.h"
 
 #include "Hardware.h"
@@ -37,6 +43,8 @@
 #include "GameDatabase.h"
 
 #include "DebugTools/Breakpoints.h"
+#include "DebugTools/MIPSAnalyst.h"
+#include "DebugTools/SymbolMap.h"
 #include "R5900OpcodeTables.h"
 
 using namespace R5900;	// for R5900 disasm tools
@@ -44,9 +52,9 @@ using namespace R5900;	// for R5900 disasm tools
 s32 EEsCycle;		// used to sync the IOP to the EE
 u32 EEoCycle;
 
-__aligned16 cpuRegisters cpuRegs;
-__aligned16 fpuRegisters fpuRegs;
-__aligned16 tlbs tlb[48];
+alignas(16) cpuRegisters cpuRegs;
+alignas(16) fpuRegisters fpuRegs;
+alignas(16) tlbs tlb[48];
 R5900cpu *Cpu = NULL;
 
 bool g_SkipBiosHack; // set at boot if the skip bios hack is on, reset before the game has started
@@ -101,9 +109,9 @@ void cpuReset()
 	extern void Deci2Reset();		// lazy, no good header for it yet.
 	Deci2Reset();
 
-	g_GameStarted = false;
-	g_GameLoading = false;
 	g_SkipBiosHack = EmuConfig.UseBOOT2Injection;
+	AllowParams1 = !g_SkipBiosHack;
+	AllowParams2 = !g_SkipBiosHack;
 
 	ElfCRC = 0;
 	DiscSerial = L"";
@@ -367,7 +375,7 @@ u32 g_nextEventCycle = 0;
 // and the recompiler.  (moved here to help alleviate redundant code)
 __fi void _cpuEventTest_Shared()
 {
-	ScopedBool etest(eeEventTestIsActive);
+	eeEventTestIsActive = true;
 	g_nextEventCycle = cpuRegs.cycle + eeWaitCycles;
 
 	// ---- INTC / DMAC (CPU-level Exceptions) -----------------
@@ -463,6 +471,8 @@ __fi void _cpuEventTest_Shared()
 
 	// Apply vsync and other counter nextCycles
 	cpuSetNextEvent( nextsCounter, nextCounter );
+
+	eeEventTestIsActive = false;
 }
 
 __ri void cpuTestINTCInts()
@@ -544,7 +554,12 @@ void __fastcall eeGameStarting()
 		//Console.WriteLn( Color_Green, "(R5900) ELF Entry point! [addr=0x%08X]", ElfEntry );
 		g_GameStarted = true;
 		g_GameLoading = false;
+#ifndef PCSX2_CORE
 		GetCoreThread().GameStartingInThread();
+#else
+		VMManager::Internal::GameStartingOnCPUThread();
+#endif
+
 
 		// GameStartingInThread may issue a reset of the cpu and/or recompilers.  Check for and
 		// handle such things here:
@@ -602,7 +617,11 @@ int ParseArgumentString(u32 arg_block)
 // Called from recompilers; __fastcall define is mandatory.
 void __fastcall eeloadHook()
 {
+#ifndef PCSX2_CORE
 	const wxString &elf_override = GetCoreThread().GetElfOverride();
+#else
+	const wxString elf_override(StringUtil::UTF8StringToWxString(VMManager::Internal::GetElfOverride()));
+#endif
 
 	if (!elf_override.IsEmpty())
 		cdvdReloadElfInfo(L"host:" + elf_override);
@@ -631,9 +650,9 @@ void __fastcall eeloadHook()
 		// mode). Then EELOAD is called with the argument "rom0:PS2LOGO". At this point, we do not need any additional tricks
 		// because EELOAD is now ready to accept launch arguments. So in full-boot mode, we simply wait for PS2LOGO to be called,
 		// then we add the desired launch arguments. PS2LOGO passes those on to the game itself as it calls EELOAD a third time.
-		if (!g_Conf->CurrentGameArgs.empty() && !strcmp(elfname.c_str(), "rom0:PS2LOGO"))
+		if (!EmuConfig.CurrentGameArgs.empty() && !strcmp(elfname.c_str(), "rom0:PS2LOGO"))
 		{
-			const char *argString = g_Conf->CurrentGameArgs.c_str();
+			const char *argString = EmuConfig.CurrentGameArgs.c_str();
 			Console.WriteLn("eeloadHook: Supplying launch argument(s) '%s' to module '%s'...", argString, elfname.c_str());
 
 			// Join all arguments by space characters so they can be processed as one string by ParseArgumentString(), then add the
@@ -646,7 +665,7 @@ void __fastcall eeloadHook()
 				arg_len = strlen((char *)PSM(arg_ptr));
 				memset(PSM(arg_ptr + arg_len), 0x20, 1);
 			}
-			strcpy((char *)PSM(arg_ptr + arg_len + 1), g_Conf->CurrentGameArgs.c_str());
+			strcpy((char *)PSM(arg_ptr + arg_len + 1), EmuConfig.CurrentGameArgs.c_str());
 			u32 first_arg_ptr = memRead32(cpuRegs.GPR.n.a1.UD[0]);
 #if DEBUG_LAUNCHARG
 			Console.WriteLn("eeloadHook: arg block is '%s'.", (char *)PSM(first_arg_ptr));
@@ -690,6 +709,8 @@ void __fastcall eeloadHook()
 		{
 			if (disctype == 2)
 				elftoload = discelf.ToUTF8();
+			else
+				g_SkipBiosHack = false; // We're not fast booting, so disable it (Fixes some weirdness with the BIOS)
 		}
 
 		// When fast-booting, we insert the game's ELF name into EELOAD so that the game is called instead of the default call of
@@ -710,7 +731,7 @@ void __fastcall eeloadHook()
 		}
 	}
 
-	if (!g_GameStarted && (disctype == 2 || disctype == 1) && elfname == discelf)
+	if (!g_GameStarted && ((disctype == 2 && elfname == discelf.ToStdString()) || disctype == 1))
 		g_GameLoading = true;
 }
 
@@ -718,7 +739,7 @@ void __fastcall eeloadHook()
 // Only called if g_SkipBiosHack is true
 void __fastcall eeloadHook2()
 {
-	if (g_Conf->CurrentGameArgs.empty())
+	if (EmuConfig.CurrentGameArgs.empty())
 		return;
 
 	if (!g_osdsys_str)
@@ -727,14 +748,14 @@ void __fastcall eeloadHook2()
 		return;
 	}
 
-	const char *argString = g_Conf->CurrentGameArgs.c_str();
+	const char *argString = EmuConfig.CurrentGameArgs.c_str();
 	Console.WriteLn("eeloadHook2: Supplying launch argument(s) '%s' to ELF '%s'.", argString, (char *)PSM(g_osdsys_str));
 
 	// Add args string after game's ELF name that was written over "rom0:OSDSYS" by eeloadHook(). In between the ELF name and args
 	// string we insert a space character so that ParseArgumentString() has one continuous string to process.
 	int game_len = strlen((char *)PSM(g_osdsys_str));
 	memset(PSM(g_osdsys_str + game_len), 0x20, 1);
-	strcpy((char *)PSM(g_osdsys_str + game_len + 1), g_Conf->CurrentGameArgs.c_str());
+	strcpy((char *)PSM(g_osdsys_str + game_len + 1), EmuConfig.CurrentGameArgs.c_str());
 #if DEBUG_LAUNCHARG
 	Console.WriteLn("eeloadHook2: arg block is '%s'.", (char *)PSM(g_osdsys_str));
 #endif

@@ -1074,6 +1074,13 @@ void psxDma3(u32 madr, u32 bcr, u32 chcr)
 
 			break;
 		case 0x41000200:
+			if (HW_DMA3_BCR_H16 == 0)
+				break;
+
+			if (cdvd.WaitingDMA)
+			{
+				PSX_INT(IopEvt_CdvdRead, (cdvd.BlockSize / 4) * 12); //Data should be already buffered so simulate DMA time
+			}
 			//SysPrintf("unhandled cdrom dma3: madr: %x, bcr: %x, chcr %x\n", madr, bcr, chcr);
 			return;
 

@@ -16,11 +16,14 @@
 #include "PrecompiledHeader.h"
 #include "App.h"
 #include "AppSaveStates.h"
-#include "AppGameDatabase.h"
+#include "GameDatabase.h"
 
 #include <wx/stdpaths.h>
+#include <wx/wfstream.h>
 #include "fmt/core.h"
 
+#include "common/FileSystem.h"
+#include "common/StringUtil.h"
 #include "common/Threading.h"
 
 #include "ps2/BiosTools.h"
@@ -37,11 +40,20 @@
 #include "Recording/InputRecordingControls.h"
 #endif
 
-__aligned16 SysMtgsThread mtgsThread;
-__aligned16 AppCoreThread CoreThread;
+alignas(16) SysMtgsThread mtgsThread;
+alignas(16) AppCoreThread CoreThread;
 
 typedef void (AppCoreThread::*FnPtr_CoreThreadMethod)();
 
+SysCoreThread& GetCoreThread()
+{
+	return CoreThread;
+}
+
+SysMtgsThread& GetMTGS()
+{
+	return mtgsThread;
+}
 
 namespace GameInfo
 {
@@ -206,13 +218,18 @@ void Pcsx2App::SysApplySettings()
 		return;
 	CoreThread.ApplySettings(g_Conf->EmuOptions);
 
-	CDVD_SourceType cdvdsrc(g_Conf->CdvdSource);
-	if (cdvdsrc != CDVDsys_GetSourceType() || (cdvdsrc == CDVD_SourceType::Iso && (CDVDsys_GetFile(cdvdsrc) != g_Conf->CurrentIso)))
+	const CDVD_SourceType cdvdsrc(g_Conf->CdvdSource);
+	const std::string currentIso(StringUtil::wxStringToUTF8String(g_Conf->CurrentIso));
+	const std::string currentDisc(StringUtil::wxStringToUTF8String(g_Conf->Folders.RunDisc));
+	if (cdvdsrc != CDVDsys_GetSourceType() ||
+			CDVDsys_GetFile(CDVD_SourceType::Iso) != currentIso ||
+			CDVDsys_GetFile(CDVD_SourceType::Disc) != currentDisc)
 	{
 		CoreThread.ResetCdvd();
 	}
 
-	CDVDsys_SetFile(CDVD_SourceType::Iso, g_Conf->CurrentIso);
+	CDVDsys_SetFile(CDVD_SourceType::Iso, currentIso);
+	CDVDsys_SetFile(CDVD_SourceType::Disc, currentDisc);
 }
 
 void AppCoreThread::OnResumeReady()
@@ -249,17 +266,14 @@ void AppCoreThread::OnPauseDebug()
 // Returns number of gamefixes set
 static int loadGameSettings(Pcsx2Config& dest, const GameDatabaseSchema::GameEntry& game)
 {
-	if (!game.isValid)
-		return 0;
-
 	int gf = 0;
 
 	if (game.eeRoundMode != GameDatabaseSchema::RoundMode::Undefined)
 	{
-		SSE_RoundMode eeRM = (SSE_RoundMode)enum_cast(game.eeRoundMode);
+		const SSE_RoundMode eeRM = (SSE_RoundMode)enum_cast(game.eeRoundMode);
 		if (EnumIsValid(eeRM))
 		{
-			PatchesCon->WriteLn(L"(GameDB) Changing EE/FPU roundmode to %d [%s]", eeRM, EnumToString(eeRM));
+			PatchesCon->WriteLn("(GameDB) Changing EE/FPU roundmode to %d [%s]", eeRM, EnumToString(eeRM));
 			dest.Cpu.sseMXCSR.SetRoundMode(eeRM);
 			gf++;
 		}
@@ -267,10 +281,10 @@ static int loadGameSettings(Pcsx2Config& dest, const GameDatabaseSchema::GameEnt
 
 	if (game.vuRoundMode != GameDatabaseSchema::RoundMode::Undefined)
 	{
-		SSE_RoundMode vuRM = (SSE_RoundMode)enum_cast(game.vuRoundMode);
+		const SSE_RoundMode vuRM = (SSE_RoundMode)enum_cast(game.vuRoundMode);
 		if (EnumIsValid(vuRM))
 		{
-			PatchesCon->WriteLn(L"(GameDB) Changing VU0/VU1 roundmode to %d [%s]", vuRM, EnumToString(vuRM));
+			PatchesCon->WriteLn("(GameDB) Changing VU0/VU1 roundmode to %d [%s]", vuRM, EnumToString(vuRM));
 			dest.Cpu.sseVUMXCSR.SetRoundMode(vuRM);
 			gf++;
 		}
@@ -278,7 +292,7 @@ static int loadGameSettings(Pcsx2Config& dest, const GameDatabaseSchema::GameEnt
 
 	if (game.eeClampMode != GameDatabaseSchema::ClampMode::Undefined)
 	{
-		int clampMode = enum_cast(game.eeClampMode);
+		const int clampMode = enum_cast(game.eeClampMode);
 		PatchesCon->WriteLn(L"(GameDB) Changing EE/FPU clamp mode [mode=%d]", clampMode);
 		dest.Cpu.Recompiler.fpuOverflow = (clampMode >= 1);
 		dest.Cpu.Recompiler.fpuExtraOverflow = (clampMode >= 2);
@@ -288,7 +302,7 @@ static int loadGameSettings(Pcsx2Config& dest, const GameDatabaseSchema::GameEnt
 
 	if (game.vuClampMode != GameDatabaseSchema::ClampMode::Undefined)
 	{
-		int clampMode = enum_cast(game.vuClampMode);
+		const int clampMode = enum_cast(game.vuClampMode);
 		PatchesCon->WriteLn("(GameDB) Changing VU0/VU1 clamp mode [mode=%d]", clampMode);
 		dest.Cpu.Recompiler.vuOverflow = (clampMode >= 1);
 		dest.Cpu.Recompiler.vuExtraOverflow = (clampMode >= 2);
@@ -296,40 +310,27 @@ static int loadGameSettings(Pcsx2Config& dest, const GameDatabaseSchema::GameEnt
 		gf++;
 	}
 
-	// TODO - config - this could be simplified with maps instead of bitfields and enums
-	for (SpeedhackId id = SpeedhackId_FIRST; id < pxEnumEnd; id++)
+	for (const auto& [id, mode] : game.speedHacks)
 	{
-		std::string key = fmt::format("{}SpeedHack", wxString(EnumToString(id)));
-
 		// Gamefixes are already guaranteed to be valid, any invalid ones are dropped
-		if (game.speedHacks.count(key) == 1)
-		{
-			// Legacy note - speedhacks are setup in the GameDB as integer values, but
-			// are effectively booleans like the gamefixes
-			bool mode = game.speedHacks.at(key) ? 1 : 0;
-			dest.Speedhacks.Set(id, mode);
-			PatchesCon->WriteLn(L"(GameDB) Setting Speedhack '" + key + "' to [mode=%d]", mode);
-			gf++;
-		}
+		// Legacy note - speedhacks are setup in the GameDB as integer values, but
+		// are effectively booleans like the gamefixes
+		dest.Speedhacks.Set(id, mode != 0);
+		PatchesCon->WriteLn("(GameDB) Setting Speedhack '%s' to [mode=%d]", EnumToString(id), static_cast<int>(mode != 0));
+		gf++;
 	}
 
-	// TODO - config - this could be simplified with maps instead of bitfields and enums
-	for (GamefixId id = GamefixId_FIRST; id < pxEnumEnd; id++)
+	for (const GamefixId id : game.gameFixes)
 	{
-		std::string key = fmt::format("{}Hack", wxString(EnumToString(id)));
-
 		// Gamefixes are already guaranteed to be valid, any invalid ones are dropped
-		if (std::find(game.gameFixes.begin(), game.gameFixes.end(), key) != game.gameFixes.end())
-		{
-			// if the fix is present, it is said to be enabled
-			dest.Gamefixes.Set(id, true);
-			PatchesCon->WriteLn(L"(GameDB) Enabled Gamefix: " + key);
-			gf++;
+		// if the fix is present, it is said to be enabled
+		dest.Gamefixes.Set(id, true);
+		PatchesCon->WriteLn("(GameDB) Enabled Gamefix: %s", EnumToString(id));
+		gf++;
 
-			// The LUT is only used for 1 game so we allocate it only when the gamefix is enabled (save 4MB)
-			if (id == Fix_GoemonTlbMiss && true)
-				vtlb_Alloc_Ppmap();
-		}
+		// The LUT is only used for 1 game so we allocate it only when the gamefix is enabled (save 4MB)
+		if (id == Fix_GoemonTlbMiss && true)
+			vtlb_Alloc_Ppmap();
 	}
 
 	return gf;
@@ -383,7 +384,7 @@ static void _ApplySettings(const Pcsx2Config& src, Pcsx2Config& fixup)
 	// Note: It's important that we apply the commandline overrides *before* database fixes.
 	// The database takes precedence (if enabled).
 
-	fixup = src;
+	fixup.CopyConfig(src);
 
 	const CommandlineOverrides& overrides(wxGetApp().Overrides);
 	if (overrides.DisableSpeedhacks || !g_Conf->EnableSpeedHacks)
@@ -422,7 +423,7 @@ static void _ApplySettings(const Pcsx2Config& src, Pcsx2Config& fixup)
 		GameInfo::gameCRC = L""; // Needs to be reset when rebooting otherwise previously loaded patches may load
 
 	if (ingame && !DiscSerial.IsEmpty())
-		GameInfo::gameSerial = L" [" + DiscSerial + L"]";
+		GameInfo::gameSerial = DiscSerial;
 
 	const wxString newGameKey(ingame ? SysGetDiscID() : SysGetBiosDiscID());
 	const bool verbose(newGameKey != curGameKey && ingame);
@@ -435,27 +436,28 @@ static void _ApplySettings(const Pcsx2Config& src, Pcsx2Config& fixup)
 
 	if (!curGameKey.IsEmpty())
 	{
-		if (IGameDatabase* GameDB = AppHost_GetGameDatabase())
+		auto game = GameDatabase::findGame(std::string(curGameKey.ToUTF8()));
+		if (game)
 		{
-			GameDatabaseSchema::GameEntry game = GameDB->findGame(std::string(curGameKey));
-			if (game.isValid)
-			{
-				GameInfo::gameName = game.name;
-				GameInfo::gameName += L" (" + game.region + L")";
-				gameCompat = L" [Status = " + compatToStringWX(game.compat) + L"]";
-				gameMemCardFilter = game.memcardFiltersAsString();
-			}
+			GameInfo::gameName = StringUtil::UTF8StringToWxString(StringUtil::StdStringFromFormat("%s (%s)", game->name.c_str(), game->region.c_str()));
+			gameCompat.Printf(" [Status = %s]", game->compatAsString());
+			gameMemCardFilter = StringUtil::UTF8StringToWxString(game->memcardFiltersAsString());
 
 			if (fixup.EnablePatches)
 			{
-				if (int patches = LoadPatchesFromGamesDB(GameInfo::gameCRC, game))
+				if (int patches = LoadPatchesFromGamesDB(GameInfo::gameCRC.ToStdString(), *game))
 				{
 					gamePatch.Printf(L" [%d Patches]", patches);
 					PatchesCon->WriteLn(Color_Green, "(GameDB) Patches Loaded: %d", patches);
 				}
-				if (int fixes = loadGameSettings(fixup, game))
+				if (int fixes = loadGameSettings(fixup, *game))
 					gameFixes.Printf(L" [%d Fixes]", fixes);
 			}
+		}
+		else
+		{
+			// Set correct title for loading standalone/homebrew ELFs
+			GameInfo::gameName = LastELF.AfterLast('\\');
 		}
 	}
 
@@ -482,12 +484,12 @@ static void _ApplySettings(const Pcsx2Config& src, Pcsx2Config& fixup)
 
 	// regular cheat patches
 	if (fixup.EnableCheats)
-		gameCheats.Printf(L" [%d Cheats]", LoadPatchesFromDir(GameInfo::gameCRC, GetCheatsFolder(), L"Cheats"));
+		gameCheats.Printf(L" [%d Cheats]", LoadPatchesFromDir(GameInfo::gameCRC, EmuFolders::Cheats, L"Cheats"));
 
 	// wide screen patches
 	if (fixup.EnableWideScreenPatches)
 	{
-		if (int numberLoadedWideScreenPatches = LoadPatchesFromDir(GameInfo::gameCRC, GetCheatsWsFolder(), L"Widescreen hacks"))
+		if (int numberLoadedWideScreenPatches = LoadPatchesFromDir(GameInfo::gameCRC, EmuFolders::CheatsWS, L"Widescreen hacks"))
 		{
 			gameWsHacks.Printf(L" [%d widescreen hacks]", numberLoadedWideScreenPatches);
 			Console.WriteLn(Color_Gray, "Found widescreen patches in the cheats_ws folder --> skipping cheats_ws.zip");
@@ -495,17 +497,21 @@ static void _ApplySettings(const Pcsx2Config& src, Pcsx2Config& fixup)
 		else
 		{
 			// No ws cheat files found at the cheats_ws folder, try the ws cheats zip file.
-			wxString cheats_ws_archive = Path::Combine(PathDefs::GetProgramDataDir(), wxFileName(L"cheats_ws.zip"));
-			int numberDbfCheatsLoaded = LoadPatchesFromZip(GameInfo::gameCRC, cheats_ws_archive);
-			PatchesCon->WriteLn(Color_Green, "(Wide Screen Cheats DB) Patches Loaded: %d", numberDbfCheatsLoaded);
-			gameWsHacks.Printf(L" [%d widescreen hacks]", numberDbfCheatsLoaded);
+			const wxString cheats_ws_archive(Path::Combine(EmuFolders::Resources, wxFileName(L"cheats_ws.zip")));
+			if (wxFile::Exists(cheats_ws_archive))
+			{
+				wxFFileInputStream* strm = new wxFFileInputStream(cheats_ws_archive);
+				int numberDbfCheatsLoaded = LoadPatchesFromZip(GameInfo::gameCRC, cheats_ws_archive, strm);
+				PatchesCon->WriteLn(Color_Green, "(Wide Screen Cheats DB) Patches Loaded: %d", numberDbfCheatsLoaded);
+				gameWsHacks.Printf(L" [%d widescreen hacks]", numberDbfCheatsLoaded);
+			}
 		}
 	}
 
 	// When we're booting, the bios loader will set a a title which would be more interesting than this
 	// to most users - with region, version, etc, so don't overwrite it with patch info. That's OK. Those
 	// users which want to know the status of the patches at the bios can check the console content.
-	wxString consoleTitle = GameInfo::gameName + GameInfo::gameSerial;
+	wxString consoleTitle = GameInfo::gameName + L" [" + GameInfo::gameSerial + L"]";
 	consoleTitle += L" [" + GameInfo::gameCRC.MakeUpper() + L"]" + gameCompat + gameFixes + gamePatch + gameCheats + gameWsHacks;
 	if (ingame)
 		Console.SetTitle(consoleTitle);
@@ -561,9 +567,6 @@ void AppCoreThread::ApplySettings(const Pcsx2Config& src)
 	{
 		_parent::ApplySettings(fixup);
 	}
-
-	if (m_ExecMode >= ExecMode_Paused)
-		GSsetVsync(EmuConfig.GS.GetVsync());
 }
 
 // --------------------------------------------------------------------------------------
@@ -577,19 +580,19 @@ void AppCoreThread::DoCpuReset()
 	_parent::DoCpuReset();
 }
 
-void AppCoreThread::OnResumeInThread(bool isSuspended)
+void AppCoreThread::OnResumeInThread(SystemsMask systemsToReinstate)
 {
 	if (m_resetCdvd)
 	{
 		CDVDsys_ChangeSource(g_Conf->CdvdSource);
-		cdvdCtrlTrayOpen();
 		DoCDVDopen();
+		cdvdCtrlTrayOpen();
 		m_resetCdvd = false;
 	}
-	else if (isSuspended)
+	else if (systemsToReinstate & System_CDVD)
 		DoCDVDopen();
 
-	_parent::OnResumeInThread(isSuspended);
+	_parent::OnResumeInThread(systemsToReinstate);
 	PostCoreStatus(CoreThread_Resumed);
 }
 
@@ -720,7 +723,7 @@ void SysExecEvent_CoreThreadClose::InvokeEvent()
 
 void SysExecEvent_CoreThreadPause::InvokeEvent()
 {
-	ScopedCoreThreadPause paused_core;
+	ScopedCoreThreadPause paused_core(m_systemsToTearDown);
 	_post_and_wait(paused_core);
 	paused_core.AllowResume();
 }
@@ -774,16 +777,15 @@ void BaseScopedCoreThread::DoResume()
 // Returns TRUE if the event is posted to the SysExecutor.
 // Returns FALSE if the thread *is* the SysExecutor (no message is posted, calling code should
 //  handle the code directly).
-bool BaseScopedCoreThread::PostToSysExec(BaseSysExecEvent_ScopedCore* msg)
+bool BaseScopedCoreThread::PostToSysExec(std::unique_ptr<BaseSysExecEvent_ScopedCore> msg)
 {
-	std::unique_ptr<BaseSysExecEvent_ScopedCore> smsg(msg);
-	if (!smsg || GetSysExecutorThread().IsSelf())
+	if (!msg || GetSysExecutorThread().IsSelf())
 		return false;
 
 	msg->SetSyncState(m_sync);
 	msg->SetResumeStates(m_sync_resume, m_mtx_resume);
 
-	GetSysExecutorThread().PostEvent(smsg.release());
+	GetSysExecutorThread().PostEvent(msg.release());
 	m_sync.WaitForResult();
 	m_sync.RethrowException();
 
@@ -799,7 +801,7 @@ ScopedCoreThreadClose::ScopedCoreThreadClose()
 		return;
 	}
 
-	if (!PostToSysExec(new SysExecEvent_CoreThreadClose()))
+	if (!PostToSysExec(std::make_unique<SysExecEvent_CoreThreadClose>()))
 	{
 		m_alreadyStopped = CoreThread.IsClosed();
 		if (!m_alreadyStopped)
@@ -821,7 +823,7 @@ ScopedCoreThreadClose::~ScopedCoreThreadClose()
 	DESTRUCTOR_CATCHALL
 }
 
-ScopedCoreThreadPause::ScopedCoreThreadPause(BaseSysExecEvent_ScopedCore* abuse_me)
+ScopedCoreThreadPause::ScopedCoreThreadPause(SystemsMask systemsToTearDown)
 {
 	if (ScopedCore_IsFullyClosed || ScopedCore_IsPaused)
 	{
@@ -830,13 +832,11 @@ ScopedCoreThreadPause::ScopedCoreThreadPause(BaseSysExecEvent_ScopedCore* abuse_
 		return;
 	}
 
-	if (!abuse_me)
-		abuse_me = new SysExecEvent_CoreThreadPause();
-	if (!PostToSysExec(abuse_me))
+	if (!PostToSysExec(std::make_unique<SysExecEvent_CoreThreadPause>(systemsToTearDown)))
 	{
 		m_alreadyStopped = CoreThread.IsPaused();
 		if (!m_alreadyStopped)
-			CoreThread.Pause();
+			CoreThread.Pause(systemsToTearDown);
 	}
 
 	ScopedCore_IsPaused = true;

@@ -30,8 +30,8 @@
 
 #include "common/pxStreams.h"
 #include "common/Console.h"
+#include "common/mt_queue.h"
 #include "DebugTools/Debug.h"
-#include "gui/App.h"
 
 #define PADdefs
 
@@ -96,13 +96,23 @@ static const std::array<gamePadValues, MAX_KEYS> all_keys =
 	PAD_R_LEFT    // Right joystick (Left) ←
 };
 
-static bool IsAnalogKey(int index)
+enum PadOptions
+{
+	PADOPTION_FORCEFEEDBACK = 0x1,
+	PADOPTION_REVERSELX = 0x2,
+	PADOPTION_REVERSELY = 0x4,
+	PADOPTION_REVERSERX = 0x8,
+	PADOPTION_REVERSERY = 0x10,
+	PADOPTION_MOUSE_L = 0x20,
+	PADOPTION_MOUSE_R = 0x40,
+};
+
+static inline bool IsAnalogKey(int index)
 {
 	return ((index >= PAD_L_UP) && (index <= PAD_R_LEFT));
 }
 
 #include "KeyStatus.h"
 
-void __LogToConsole(const char* fmt, ...);
 void PADLoadConfig();
 void PADSaveConfig();

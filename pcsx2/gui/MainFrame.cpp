@@ -36,8 +36,6 @@
 #include "Recording/InputRecordingControls.h"
 #endif
 
-extern std::atomic_bool init_gspanel;
-
 // ------------------------------------------------------------------------
 wxMenu* MainEmuFrame::MakeStatesSubMenu(int baseid, int loadBackupId) const
 {
@@ -62,9 +60,9 @@ wxMenu* MainEmuFrame::MakeStatesSubMenu(int baseid, int loadBackupId) const
 	// For safety i also made them inactive aka grayed out to signify that's it's only for informational purposes
 	// Fixme: In the future this can still be expanded to actually cycle savestates in the GUI.
 	mnuSubstates->Append(baseid - 1, _("File..."));
-	wxMenuItem* CycleNext = mnuSubstates->Append(baseid - 2, _("Cycle to next slot") + wxString("  ") + fmt::format("({})", wxGetApp().GlobalAccels->findKeycodeWithCommandId("States_CycleSlotForward").toTitleizedString()));
+	wxMenuItem* CycleNext = mnuSubstates->Append(baseid - 2, _("Cycle to next slot") + wxString("\t") + wxGetApp().GlobalAccels->findKeycodeWithCommandId("States_CycleSlotForward").toTitleizedString());
 	CycleNext->Enable(false);
-	wxMenuItem* CycleBack = mnuSubstates->Append(baseid - 3, _("Cycle to previous slot") + wxString("  ") + fmt::format("({})", wxGetApp().GlobalAccels->findKeycodeWithCommandId("States_CycleSlotBackward").toTitleizedString()));
+	wxMenuItem* CycleBack = mnuSubstates->Append(baseid - 3, _("Cycle to previous slot") + wxString("\t") + wxGetApp().GlobalAccels->findKeycodeWithCommandId("States_CycleSlotBackward").toTitleizedString());
 	CycleBack->Enable(false);
 	return mnuSubstates;
 }
@@ -87,12 +85,18 @@ void MainEmuFrame::UpdateStatusBar()
 	}
 
 	m_statusbar.SetStatusText(temp, 0);
-	m_statusbar.SetStatusText(CDVD_SourceLabels[enum_cast(g_Conf->CdvdSource)], 1);
+
+	if (g_Conf->EnablePresets)
+		m_statusbar.SetStatusText(wxString::Format(L"P:%d", g_Conf->PresetIndex + 1), 1);
+	else
+		m_statusbar.SetStatusText("---", 1);
+
+	m_statusbar.SetStatusText(CDVD_SourceLabels[enum_cast(g_Conf->CdvdSource)], 2);
 
 #ifdef __M_X86_64
-	m_statusbar.SetStatusText("x64", 2);
+	m_statusbar.SetStatusText("x64", 3);
 #else
-	m_statusbar.SetStatusText("x32", 2);
+	m_statusbar.SetStatusText("x32", 3);
 #endif
 }
 
@@ -158,7 +162,7 @@ void MainEmuFrame::OnCloseWindow(wxCloseEvent& evt)
 {
 	// the main thread is busy suspending everything, so let's not try to call it 
 	// when closing the emulator
-	init_gspanel = false;
+	//init_gspanel = false;
 
 	if (IsBeingDeleted())
 		return;
@@ -256,8 +260,8 @@ void MainEmuFrame::ConnectMenus()
 
 	Bind(wxEVT_MENU, &MainEmuFrame::Menu_EnablePatches_Click, this, MenuId_EnablePatches);
 	Bind(wxEVT_MENU, &MainEmuFrame::Menu_EnableCheats_Click, this, MenuId_EnableCheats);
-	Bind(wxEVT_MENU, &MainEmuFrame::Menu_IPC_Enable_Click, this, MenuId_IPC_Enable);
-	Bind(wxEVT_MENU, &MainEmuFrame::Menu_IPC_Settings_Click, this, MenuId_IPC_Settings);
+	Bind(wxEVT_MENU, &MainEmuFrame::Menu_PINE_Enable_Click, this, MenuId_PINE_Enable);
+	Bind(wxEVT_MENU, &MainEmuFrame::Menu_PINE_Settings_Click, this, MenuId_PINE_Settings);
 	Bind(wxEVT_MENU, &MainEmuFrame::Menu_EnableWideScreenPatches_Click, this, MenuId_EnableWideScreenPatches);
 #ifndef DISABLE_RECORDING
 	Bind(wxEVT_MENU, &MainEmuFrame::Menu_EnableRecordingTools_Click, this, MenuId_EnableInputRecording);
@@ -269,6 +273,7 @@ void MainEmuFrame::ConnectMenus()
 	// CDVD
 	Bind(wxEVT_MENU, &MainEmuFrame::Menu_IsoBrowse_Click, this, MenuId_IsoBrowse);
 	Bind(wxEVT_MENU, &MainEmuFrame::Menu_IsoClear_Click, this, MenuId_IsoClear);
+	Bind(wxEVT_MENU, &MainEmuFrame::Menu_IsoClearMissing_Click, this, MenuId_IsoClearMissing);
 	Bind(wxEVT_MENU, &MainEmuFrame::Menu_CdvdSource_Click, this, MenuId_Src_Iso);
 	Bind(wxEVT_MENU, &MainEmuFrame::Menu_CdvdSource_Click, this, MenuId_Src_Disc);
 	Bind(wxEVT_MENU, &MainEmuFrame::Menu_CdvdSource_Click, this, MenuId_Src_NoDisc);
@@ -293,7 +298,7 @@ void MainEmuFrame::ConnectMenus()
 
 	// Misc
 	Bind(wxEVT_MENU, &MainEmuFrame::Menu_ShowConsole, this, MenuId_Console);
-#if defined(__unix__)
+#if defined(__POSIX__)
 	Bind(wxEVT_MENU, &MainEmuFrame::Menu_ShowConsole_Stdio, this, MenuId_Console_Stdio);
 #endif
 
@@ -389,12 +394,12 @@ void MainEmuFrame::CreatePcsx2Menu()
 	m_GameSettingsSubmenu.Append(MenuId_EnableCheats, _("Enable &Cheats"),
 		_("Use cheats otherwise known as pnachs from the cheats folder."), wxITEM_CHECK);
 
-	m_GameSettingsSubmenu.Append(MenuId_IPC, _("Configure &IPC"), &m_submenuIPC);
+	m_GameSettingsSubmenu.Append(MenuId_PINE, _("Configure &PINE"), &m_submenuPINE);
 
-	m_submenuIPC.Append(MenuId_IPC_Enable, _("&Enable IPC"),
+	m_submenuPINE.Append(MenuId_PINE_Enable, _("&Enable PINE"),
 		wxEmptyString, wxITEM_CHECK);
 
-	m_submenuIPC.Append(MenuId_IPC_Settings, _("IPC &Settings"));
+	m_submenuPINE.Append(MenuId_PINE_Settings, _("PINE &Settings"));
 
 	m_GameSettingsSubmenu.Append(MenuId_EnableWideScreenPatches, _("Enable &Widescreen Patches"),
 		_("Enabling Widescreen Patches may occasionally cause issues."), wxITEM_CHECK);
@@ -470,12 +475,14 @@ void MainEmuFrame::CreateWindowsMenu()
 {
 	m_menuWindow.Append(MenuId_Debug_CreateBlockdump, _("Create &Blockdump"), _("Creates a block dump for debugging purposes."), wxITEM_CHECK);
 	m_menuWindow.Append(MenuId_Debug_Open, _("&Show Debugger"), wxEmptyString, wxITEM_CHECK);
-#if defined(PCSX2_DEVBUILD) || defined(PCSX2_CI)
-	m_menuWindow.Append(MenuId_GSDump, _("Show &GS Debugger"));
+
+#ifndef PCSX2_CI
+	if (IsDevBuild || g_Conf->DevMode)
 #endif
+		m_menuWindow.Append(MenuId_GSDump, _("Show &GS Debugger"));
 
 	m_menuWindow.Append(&m_MenuItem_Console);
-#if defined(__unix__)
+#if defined(__POSIX__)
 	m_menuWindow.AppendSeparator();
 	m_menuWindow.Append(&m_MenuItem_Console_Stdio);
 #endif
@@ -518,7 +525,7 @@ void MainEmuFrame::CreateInputRecordingMenu()
 
 	m_menuRecording.Append(MenuId_Recording_Settings, _("Settings"), &m_submenu_recording_settings);
 	wxString frame_advance_label = wxString(_("Configure Frame Advance"));
-	frame_advance_label.Append(fmt::format(" ({})", g_Conf->inputRecording.m_frame_advance_amount));
+	frame_advance_label.Append(wxString::Format(" (%d)", g_Conf->inputRecording.m_frame_advance_amount));
 	m_submenu_recording_settings.Append(MenuId_Recording_Config_FrameAdvance, frame_advance_label, _("Change the amount of frames advanced each time"));
 	m_menuRecording.AppendSeparator();
 
@@ -562,7 +569,7 @@ MainEmuFrame::MainEmuFrame(wxWindow* parent, const wxString& title)
 	, m_menuWindow(*new wxMenu())
 	, m_menuCapture(*new wxMenu())
 	, m_submenuVideoCapture(*new wxMenu())
-	, m_submenuIPC(*new wxMenu())
+	, m_submenuPINE(*new wxMenu())
 	, m_submenuScreenshot(*new wxMenu())
 #ifndef DISABLE_RECORDING
 	, m_menuRecording(*new wxMenu())
@@ -574,7 +581,7 @@ MainEmuFrame::MainEmuFrame(wxWindow* parent, const wxString& title)
 	, m_GameSettingsSubmenu(*new wxMenu())
 
 	, m_MenuItem_Console(*new wxMenuItem(&m_menuWindow, MenuId_Console, _("&Show Program Log"), wxEmptyString, wxITEM_CHECK))
-#if defined(__unix__)
+#if defined(__POSIX__)
 	, m_MenuItem_Console_Stdio(*new wxMenuItem(&m_menuWindow, MenuId_Console_Stdio, _("&Program Log to Stdio"), wxEmptyString, wxITEM_CHECK))
 #endif
 
@@ -615,6 +622,12 @@ MainEmuFrame::MainEmuFrame(wxWindow* parent, const wxString& title)
 		// stable releases, with a simple title.
 		wintitle.Printf(L"%s  %d.%d.%d", pxGetAppName().c_str(), PCSX2_VersionHi, PCSX2_VersionMid, PCSX2_VersionLo);
 	}
+	else if (GIT_TAGGED_COMMIT) // Nightly builds
+	{
+		// tagged commit - more modern implementation of dev build versioning
+		// - there is no need to include the commit - that is associated with the tag, git is implied
+		wintitle.Printf(L"%s Nightly - %s", pxGetAppName().c_str(), GIT_TAG);
+	}
 	else
 	{
 		// beta / development editions, which feature revision number and compile date.
@@ -624,8 +637,8 @@ MainEmuFrame::MainEmuFrame(wxWindow* parent, const wxString& title)
 		}
 		else
 		{
-			wintitle.Printf(L"%s  %d.%d.%d-%lld%s (git)", pxGetAppName().c_str(), PCSX2_VersionHi, PCSX2_VersionMid,
-				PCSX2_VersionLo, SVN_REV, SVN_MODS ? L"m" : wxEmptyString);
+			wintitle.Printf(L"%s  %d.%d.%d-%lld (git)", pxGetAppName().c_str(), PCSX2_VersionHi, PCSX2_VersionMid,
+				PCSX2_VersionLo, SVN_REV);
 		}
 	}
 
@@ -636,9 +649,9 @@ MainEmuFrame::MainEmuFrame(wxWindow* parent, const wxString& title)
 	// I cannot get it to work despite following various examples to the letter.
 	SetIcons(wxGetApp().GetIconBundle());
 
-	int m_statusbar_widths[] = {(int)-20, (int)-3, (int)-2};
-	m_statusbar.SetFieldsCount(3);
-	m_statusbar.SetStatusWidths(3, m_statusbar_widths);
+	int m_statusbar_widths[] = {(int)-20, (int)-3, (int)-3, (int)-3};
+	m_statusbar.SetFieldsCount(4);
+	m_statusbar.SetStatusWidths(4, m_statusbar_widths);
 	m_statusbar.SetStatusText(wxEmptyString, 0);
 
 	wxBoxSizer& joe(*new wxBoxSizer(wxVERTICAL));
@@ -818,19 +831,19 @@ void MainEmuFrame::ApplyConfigToGui(AppConfig& configToApply, int flags)
 	{ //these should not be affected by presets
 		menubar.Check(MenuId_EnableBackupStates, configToApply.EmuOptions.BackupSavestate);
 		menubar.Check(MenuId_EnableCheats, configToApply.EmuOptions.EnableCheats);
-		menubar.Check(MenuId_IPC_Enable, configToApply.EmuOptions.EnableIPC);
+		menubar.Check(MenuId_PINE_Enable, configToApply.EmuOptions.EnablePINE);
 		menubar.Check(MenuId_EnableWideScreenPatches, configToApply.EmuOptions.EnableWideScreenPatches);
 		menubar.Check(MenuId_Capture_Video_IncludeAudio, configToApply.AudioCapture.EnableAudio);
 #ifndef DISABLE_RECORDING
 		menubar.Check(MenuId_EnableInputRecording, configToApply.EmuOptions.EnableRecordingTools);
 		wxString frame_advance_label = wxString(_("Configure Frame Advance"));
-		frame_advance_label.Append(fmt::format(" ({})", configToApply.inputRecording.m_frame_advance_amount));
+		frame_advance_label.Append(wxString::Format(" (%d)", configToApply.inputRecording.m_frame_advance_amount));
 		m_submenu_recording_settings.SetLabel(MenuId_Recording_Config_FrameAdvance, frame_advance_label);
 		g_InputRecordingControls.setFrameAdvanceAmount(configToApply.inputRecording.m_frame_advance_amount);
 #endif
 		menubar.Check(MenuId_EnableHostFs, configToApply.EmuOptions.HostFs);
 		menubar.Check(MenuId_Debug_CreateBlockdump, configToApply.EmuOptions.CdvdDumpBlocks);
-#if defined(__unix__)
+#if defined(__POSIX__)
 		menubar.Check(MenuId_Console_Stdio, configToApply.EmuOptions.ConsoleToStdio);
 #endif
 

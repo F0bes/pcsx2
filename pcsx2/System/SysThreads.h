@@ -19,12 +19,24 @@
 
 #include "common/PersistentThread.h"
 #include "common/emitter/tools.h"
-#include "IPC.h"
+#include "PINE.h"
 
 
 using namespace Threading;
 
 typedef SafeArray<u8> VmStateBuffer;
+
+enum SystemsMask : uint8_t
+{
+	System_GS = 1 << 0,
+	System_SPU2 = 1 << 1,
+	System_PAD = 1 << 2,
+	System_FW = 1 << 3,
+	System_CDVD = 1 << 4,
+	System_USB = 1 << 5,
+	System_DEV9 = 1 << 6,
+	System_MCD = 1 << 7,
+};
 
 // --------------------------------------------------------------------------------------
 //  SysThreadBase
@@ -65,6 +77,7 @@ public:
 
 protected:
 	std::atomic<ExecutionMode> m_ExecMode;
+	std::atomic<SystemsMask> m_SystemsToTearDown {};
 
 	// This lock is used to avoid simultaneous requests to Suspend/Resume/Pause from
 	// contending threads.
@@ -113,7 +126,7 @@ public:
 
 	virtual void Suspend(bool isBlocking = true);
 	virtual void Resume();
-	virtual void Pause(bool debug = false);
+	virtual void Pause(SystemsMask systemsToTearDown, bool debug = false);
 	virtual void PauseSelf();
 	virtual void PauseSelfDebug();
 
@@ -146,18 +159,19 @@ protected:
 	// prior to pausing the thread (ie, when Pause() has been called on a separate thread,
 	// requesting this thread pause itself temporarily).  After this is called, the thread
 	// enters a waiting state on the m_sem_Resume semaphore.
-	virtual void OnPauseInThread() = 0;
+	// Parameter:
+	//   systemsToTearDown - a bitmask of systems to call Close functions on.
+	virtual void OnPauseInThread(SystemsMask systemsToTearDown) = 0;
 
 	// Extending classes should implement this, but should not call it.  The parent class
 	// handles invocation by the following guidelines: Called from StateCheckInThread() after the
 	// thread has been suspended and then subsequently resumed.
 	// Parameter:
-	//   isSuspended - set to TRUE if the thread is returning from a suspended state, or
-	//     FALSE if it's returning from a paused state.
-	virtual void OnResumeInThread(bool isSuspended) = 0;
+	//   systemsToTearDown - a bitmask of systems to call Open functions on.
+	virtual void OnResumeInThread(SystemsMask systemsToReinstate) = 0;
 };
 
-
+#ifndef PCSX2_CORE
 // --------------------------------------------------------------------------------------
 //  SysCoreThread class
 // --------------------------------------------------------------------------------------
@@ -171,16 +185,16 @@ protected:
 	bool m_resetVsyncTimers;
 	bool m_resetVirtualMachine;
 
-	// Stores the state of the socket IPC thread.
-	std::unique_ptr<SocketIPC> m_socketIpc;
+	// Stores the state of the PINE thread.
+	std::unique_ptr<PINEServer> m_pineServer;
 
-	// Current state of the IPC thread
-	enum StateIPC
+	// Current state of the PINE thread
+	enum StatePINE
 	{
 		OFF,
 		ON
 	};
-	StateIPC m_IpcState = OFF;
+	StatePINE m_PineState = OFF;
 
 	// Indicates if the system has an active virtual machine state.  Pretty much always
 	// true anytime between subcomponents being initialized and being shutdown.  Gets
@@ -198,13 +212,13 @@ public:
 
 	bool HasPendingStateChangeRequest() const;
 
-	virtual void OnResumeReady();
+	virtual void OnResumeReady() override;
 	virtual void Reset();
 	virtual void ResetQuick();
-	virtual void Cancel(bool isBlocking = true);
-	virtual bool Cancel(const wxTimeSpan& timeout);
+	virtual void Cancel(bool isBlocking = true) override;
+	virtual bool Cancel(const wxTimeSpan& timeout) override;
 
-	virtual bool StateCheckInThread();
+	virtual bool StateCheckInThread() override;
 	virtual void VsyncInThread();
 	virtual void GameStartingInThread();
 
@@ -218,18 +232,22 @@ public:
 protected:
 	void _reset_stuff_as_needed();
 
-	virtual void Start();
-	virtual void OnStart();
-	virtual void OnSuspendInThread();
-	virtual void OnPauseInThread() {}
-	virtual void OnResumeInThread(bool IsSuspended);
-	virtual void OnCleanupInThread();
-	virtual void ExecuteTaskInThread();
+	virtual void Start() override;
+	virtual void OnStart() override;
+	virtual void OnSuspendInThread() override;
+	virtual void OnPauseInThread(SystemsMask systemsToTearDown) override { TearDownSystems(systemsToTearDown); }
+	virtual void OnResumeInThread(SystemsMask systemsToReinstate) override;
+	virtual void OnCleanupInThread() override;
+	virtual void ExecuteTaskInThread() override;
 	virtual void DoCpuReset();
 	virtual void DoCpuExecute();
 
 	void _StateCheckThrows();
+
+private:
+	void TearDownSystems(SystemsMask systemsToTearDown);
 };
+
 
 
 struct SysStateUnlockedParams
@@ -267,7 +285,9 @@ extern SysCoreThread& GetCoreThread();
 
 extern bool g_CDVDReset;
 
-namespace IPCSettings
+namespace PINESettings
 {
 	extern unsigned int slot;
 };
+
+#endif

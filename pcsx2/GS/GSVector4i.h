@@ -13,8 +13,6 @@
  *  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "GS_types.h"
-
 class alignas(16) GSVector4i
 {
 	static const GSVector4i m_xff[17];
@@ -54,15 +52,15 @@ public:
 		struct { int r, g, b, a; };
 		struct { int left, top, right, bottom; };
 		int v[4];
-		float f32[4];
-		int8 i8[16];
-		int16 i16[8];
-		int32 i32[4];
-		int64 i64[2];
-		uint8 u8[16];
-		uint16 u16[8];
-		uint32 u32[4];
-		uint64 u64[2];
+		float F32[4];
+		s8  I8[16];
+		s16 I16[8];
+		s32 I32[4];
+		s64 I64[2];
+		u8  U8[16];
+		u16 U16[8];
+		u32 U32[4];
+		u64 U64[2];
 		__m128i m;
 	};
 
@@ -83,16 +81,7 @@ public:
 
 	__forceinline GSVector4i(int x, int y, int z, int w)
 	{
-		// 4 gprs
-
-		// m = _mm_set_epi32(w, z, y, x);
-
-		// 2 gprs
-
-		GSVector4i xz = load(x).upl32(load(z));
-		GSVector4i yw = load(y).upl32(load(w));
-
-		*this = xz.upl32(yw);
+		m = _mm_set_epi32(w, z, y, x);
 	}
 
 	__forceinline GSVector4i(int x, int y)
@@ -234,13 +223,9 @@ public:
 		return sat_i32(a);
 	}
 
-	template <int mode>
-	__forceinline GSVector4i ralign(const GSVector2i& a) const
+	template <Align_Mode mode>
+	GSVector4i _ralign_helper(const GSVector4i& mask) const
 	{
-		// a must be 1 << n
-
-		GSVector4i mask = GSVector4i(a) - GSVector4i(1, 1);
-
 		GSVector4i v;
 
 		switch (mode)
@@ -248,11 +233,26 @@ public:
 			case Align_Inside:  v = *this + mask;        break;
 			case Align_Outside: v = *this + mask.zwxy(); break;
 			case Align_NegInf:  v = *this;               break;
-			case Align_PosInf:  v = *this + mask.zwzw(); break;
+			case Align_PosInf:  v = *this + mask.xyxy(); break;
 			default: pxAssert(0); break;
 		}
 
 		return v.andnot(mask.xyxy());
+	}
+
+	/// Align the rect using mask values that already have one subtracted (1 << n - 1 aligns to 1 << n)
+	template <Align_Mode mode>
+	GSVector4i ralign_presub(const GSVector2i& a) const
+	{
+		return _ralign_helper<mode>(GSVector4i(a));
+	}
+
+	template <Align_Mode mode>
+	GSVector4i ralign(const GSVector2i& a) const
+	{
+		// a must be 1 << n
+
+		return _ralign_helper<mode>(GSVector4i(a) - GSVector4i(1, 1));
 	}
 
 	GSVector4i fit(int arx, int ary) const;
@@ -275,14 +275,14 @@ public:
 
 	//
 
-	__forceinline uint32 rgba32() const
+	__forceinline u32 rgba32() const
 	{
 		GSVector4i v = *this;
 
 		v = v.ps32(v);
 		v = v.pu16(v);
 
-		return (uint32)store(v);
+		return (u32)store(v);
 	}
 
 	__forceinline GSVector4i sat_i8(const GSVector4i& a, const GSVector4i& b) const
@@ -426,15 +426,44 @@ public:
 		return GSVector4i(_mm_blend_epi16(m, a, mask));
 	}
 
-#if _M_SSE >= 0x501
-
 	template <int mask>
 	__forceinline GSVector4i blend32(const GSVector4i& v) const
 	{
+#if _M_SSE >= 0x501
 		return GSVector4i(_mm_blend_epi32(m, v.m, mask));
+#else
+		constexpr int bit3 = ((mask & 8) * 3) << 3;
+		constexpr int bit2 = ((mask & 4) * 3) << 2;
+		constexpr int bit1 = ((mask & 2) * 3) << 1;
+		constexpr int bit0 = (mask & 1) * 3;
+		return blend16<bit3 | bit2 | bit1 | bit0>(v);
+#endif
 	}
 
-#endif
+	/// Equivalent to blend with the given mask broadcasted across the vector
+	/// May be faster than blend in some cases
+	template <u32 mask>
+	__forceinline GSVector4i smartblend(const GSVector4i& a) const
+	{
+		if (mask == 0)
+			return *this;
+		if (mask == 0xffffffff)
+			return a;
+
+		if (mask == 0x0000ffff)
+			return blend16<0x55>(a);
+		if (mask == 0xffff0000)
+			return blend16<0xaa>(a);
+
+		for (int i = 0; i < 32; i += 8)
+		{
+			u8 byte = (mask >> i) & 0xff;
+			if (byte != 0xff && byte != 0)
+				return blend(a, GSVector4i(mask));
+		}
+
+		return blend8(a, GSVector4i(mask));
+	}
 
 	__forceinline GSVector4i blend(const GSVector4i& a, const GSVector4i& mask) const
 	{
@@ -698,6 +727,13 @@ public:
 		return GSVector4i(_mm_sra_epi32(m, i));
 	}
 
+#if _M_SSE >= 0x501
+	__forceinline GSVector4i srav32(const GSVector4i& v) const
+	{
+		return GSVector4i(_mm_srav_epi32(m, v.m));
+	}
+#endif
+
 	__forceinline GSVector4i sll16(int i) const
 	{
 		return GSVector4i(_mm_slli_epi16(m, i));
@@ -719,9 +755,9 @@ public:
 	}
 
 #if _M_SSE >= 0x501
-	__forceinline GSVector4i sllv32(__m128i i) const
+	__forceinline GSVector4i sllv32(const GSVector4i& v) const
 	{
-		return GSVector4i(_mm_sllv_epi32(m, i));
+		return GSVector4i(_mm_sllv_epi32(m, v.m));
 	}
 #endif
 
@@ -756,9 +792,9 @@ public:
 	}
 
 #if _M_SSE >= 0x501
-	__forceinline GSVector4i srlv32(__m128i i) const
+	__forceinline GSVector4i srlv32(const GSVector4i& v) const
 	{
-		return GSVector4i(_mm_srlv_epi32(m, i));
+		return GSVector4i(_mm_srlv_epi32(m, v.m));
 	}
 #endif
 
@@ -1051,13 +1087,13 @@ public:
 #ifdef _M_AMD64
 
 	template <int i>
-	__forceinline GSVector4i insert64(int64 a) const
+	__forceinline GSVector4i insert64(s64 a) const
 	{
 		return GSVector4i(_mm_insert_epi64(m, a, i));
 	}
 
 	template <int i>
-	__forceinline int64 extract64() const
+	__forceinline s64 extract64() const
 	{
 		if (i == 0)
 			return GSVector4i::storeq(*this);
@@ -1299,8 +1335,8 @@ public:
 	{
 		GSVector4i v;
 
-		v = loadq((int64)ptr[extract8<src + 0>() & 0xf]);
-		v = v.insert64<1>((int64)ptr[extract8<src + 0>() >> 4]);
+		v = loadq((s64)ptr[extract8<src + 0>() & 0xf]);
+		v = v.insert64<1>((s64)ptr[extract8<src + 0>() >> 4]);
 
 		return v;
 	}
@@ -1310,8 +1346,8 @@ public:
 	{
 		GSVector4i v;
 
-		v = loadq((int64)ptr[extract8<src + 0>()]);
-		v = v.insert64<1>((int64)ptr[extract8<src + 1>()]);
+		v = loadq((s64)ptr[extract8<src + 0>()]);
+		v = v.insert64<1>((s64)ptr[extract8<src + 1>()]);
 
 		return v;
 	}
@@ -1321,8 +1357,8 @@ public:
 	{
 		GSVector4i v;
 
-		v = loadq((int64)ptr[extract16<src + 0>()]);
-		v = v.insert64<1>((int64)ptr[extract16<src + 1>()]);
+		v = loadq((s64)ptr[extract16<src + 0>()]);
+		v = v.insert64<1>((s64)ptr[extract16<src + 1>()]);
 
 		return v;
 	}
@@ -1332,8 +1368,8 @@ public:
 	{
 		GSVector4i v;
 
-		v = loadq((int64)ptr[extract32<src + 0>()]);
-		v = v.insert64<1>((int64)ptr[extract32<src + 1>()]);
+		v = loadq((s64)ptr[extract32<src + 0>()]);
+		v = v.insert64<1>((s64)ptr[extract32<src + 1>()]);
 
 		return v;
 	}
@@ -1343,8 +1379,8 @@ public:
 	{
 		GSVector4i v;
 
-		v = loadq((int64)ptr[extract64<0>()]);
-		v = v.insert64<1>((int64)ptr[extract64<1>()]);
+		v = loadq((s64)ptr[extract64<0>()]);
+		v = v.insert64<1>((s64)ptr[extract64<1>()]);
 
 		return v;
 	}
@@ -1400,7 +1436,7 @@ public:
 		dst[1] = gather8_4<8>(ptr);
 	}
 
-	__forceinline void gather8_8(const uint8* RESTRICT ptr, GSVector4i* RESTRICT dst) const
+	__forceinline void gather8_8(const u8* RESTRICT ptr, GSVector4i* RESTRICT dst) const
 	{
 		dst[0] = gather8_8<>(ptr);
 	}
@@ -1568,7 +1604,7 @@ public:
 
 #ifdef _M_AMD64
 
-	__forceinline static GSVector4i loadq(int64 i)
+	__forceinline static GSVector4i loadq(s64 i)
 	{
 		return GSVector4i(_mm_cvtsi64_si128(i));
 	}
@@ -1612,7 +1648,7 @@ public:
 
 #ifdef _M_AMD64
 
-	__forceinline static int64 storeq(const GSVector4i& v)
+	__forceinline static s64 storeq(const GSVector4i& v)
 	{
 		return _mm_cvtsi128_si64(v.m);
 	}
@@ -1648,24 +1684,31 @@ public:
 
 	__forceinline static void transpose(GSVector4i& a, GSVector4i& b, GSVector4i& c, GSVector4i& d)
 	{
-		_MM_TRANSPOSE4_SI128(a.m, b.m, c.m, d.m);
+		__m128 tmp0 = _mm_shuffle_ps(_mm_castsi128_ps(a.m), _mm_castsi128_ps(b.m), 0x44);
+		__m128 tmp2 = _mm_shuffle_ps(_mm_castsi128_ps(a.m), _mm_castsi128_ps(b.m), 0xEE);
+		__m128 tmp1 = _mm_shuffle_ps(_mm_castsi128_ps(c.m), _mm_castsi128_ps(d.m), 0x44);
+		__m128 tmp3 = _mm_shuffle_ps(_mm_castsi128_ps(c.m), _mm_castsi128_ps(d.m), 0xEE);
+		a = _mm_castps_si128(_mm_shuffle_ps(tmp0, tmp1, 0x88));
+		b = _mm_castps_si128(_mm_shuffle_ps(tmp0, tmp1, 0xDD));
+		c = _mm_castps_si128(_mm_shuffle_ps(tmp2, tmp3, 0x88));
+		d = _mm_castps_si128(_mm_shuffle_ps(tmp2, tmp3, 0xDD));
+	}
+
+	__forceinline static void mix4(GSVector4i& a, GSVector4i& b)
+	{
+		GSVector4i mask(_mm_set1_epi32(0x0f0f0f0f));
+
+		GSVector4i c = (b << 4).blend(a, mask);
+		GSVector4i d = b.blend(a >> 4, mask);
+		a = c;
+		b = d;
 	}
 
 	__forceinline static void sw4(GSVector4i& a, GSVector4i& b, GSVector4i& c, GSVector4i& d)
 	{
-		const __m128i epi32_0f0f0f0f = _mm_set1_epi32(0x0f0f0f0f);
-
-		GSVector4i mask(epi32_0f0f0f0f);
-
-		GSVector4i e = (b << 4).blend(a, mask);
-		GSVector4i f = b.blend(a >> 4, mask);
-		GSVector4i g = (d << 4).blend(c, mask);
-		GSVector4i h = d.blend(c >> 4, mask);
-
-		a = e.upl8(f);
-		c = e.uph8(f);
-		b = g.upl8(h);
-		d = g.uph8(h);
+		mix4(a, b);
+		mix4(c, d);
+		sw8(a, b, c, d);
 	}
 
 	__forceinline static void sw8(GSVector4i& a, GSVector4i& b, GSVector4i& c, GSVector4i& d)
@@ -1722,6 +1765,8 @@ public:
 		b = f.upl32(d);
 		d = f.uph32(d);
 	}
+
+	__forceinline static void sw32_inv(GSVector4i& a, GSVector4i& b, GSVector4i& c, GSVector4i& d);
 
 	__forceinline static void sw64(GSVector4i& a, GSVector4i& b, GSVector4i& c, GSVector4i& d)
 	{
@@ -1975,6 +2020,13 @@ public:
 	VECTOR4i_SHUFFLE_1(w, 3)
 
 	// clang-format on
+
+	/// Noop, here so broadcast128 can be used generically over all vectors
+	__forceinline static GSVector4i broadcast128(const GSVector4i& v)
+	{
+		return v;
+	}
+
 
 	__forceinline static GSVector4i zero() { return GSVector4i(_mm_setzero_si128()); }
 

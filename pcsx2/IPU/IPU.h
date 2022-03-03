@@ -16,6 +16,7 @@
 #pragma once
 
 #include "IPU_Fifo.h"
+#include "IPUdma.h"
 
 #define ipumsk( src ) ( (src) & 0xff )
 #define ipucase( src ) case ipumsk(src)
@@ -71,11 +72,11 @@ union tIPU_CTRL {
 	bool test(u32 flags) const { return !!(_u32 & flags); }
 	void set_flags(u32 flags) { _u32 |= flags; }
 	void clear_flags(u32 flags) { _u32 &= ~flags; }
-	void reset() { _u32 = 0; }
+	void reset() { _u32 &= 0x7F33F00; }
 };
 
-struct __aligned16 tIPU_BP {
-	__aligned16 u128 internal_qwc[2];
+struct alignas(16) tIPU_BP {
+	alignas(16) u128 internal_qwc[2];
 
 	u32 BP;		// Bit stream point (0 to 128*2)
 	u32 IFC;	// Input FIFO counter (8QWC) (0 to 8)
@@ -120,15 +121,16 @@ struct __aligned16 tIPU_BP {
 
 	__fi bool FillBuffer(u32 bits)
 	{
-		while (FP < 2)
+		while ((FP * 128) < (BP + bits))
 		{
 			if (ipu_fifo.in.read(&internal_qwc[FP]) == 0)
 			{
 				// Here we *try* to fill the entire internal QWC buffer; however that may not necessarily
 				// be possible -- so if the fill fails we'll only return 0 if we don't have enough
 				// remaining bits in the FIFO to fill the request.
+				// Used to do ((FP!=0) && (BP + bits) <= 128) if we get here there's defo not enough data now though
 
-				return ((FP!=0) && (BP + bits) <= 128);
+				return false;
 			}
 
 			++FP;
@@ -283,13 +285,13 @@ union tIPU_cmd
 
 static IPUregisters& ipuRegs = (IPUregisters&)eeHw[0x2000];
 
-extern __aligned16 tIPU_cmd ipu_cmd;
+alignas(16) extern tIPU_cmd ipu_cmd;
 extern int coded_block_pattern;
 
 extern void ipuReset();
 
 extern u32 ipuRead32(u32 mem);
-extern u64 ipuRead64(u32 mem);
+extern RETURNS_R64 ipuRead64(u32 mem);
 extern bool ipuWrite32(u32 mem,u32 value);
 extern bool ipuWrite64(u32 mem,u64 value);
 

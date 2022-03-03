@@ -373,7 +373,12 @@ __forceinline bool StartQueuedVoice(uint coreidx, uint voiceidx)
 	vc.ADSR.Phase = 1;
 	vc.SCurrent = 28;
 	vc.LoopMode = 0;
-	vc.SP = 0;
+
+	// When SP >= 0 the next sample will be grabbed, we don't want this to happen
+	// instantly because in the case of pitch being 0 we want to delay getting
+	// the next block header.
+	vc.SP = -1;
+
 	vc.LoopFlags = 0;
 	vc.NextA = vc.StartA | 1;
 	vc.Prev1 = 0;
@@ -410,7 +415,7 @@ __forceinline void TimeUpdate(u32 cClocks)
 	}
 
 // Visual debug display showing all core's activity! Disabled via #define on release builds.
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(PCSX2_CORE)
 	UpdateDebugDialog();
 #endif
 
@@ -657,9 +662,7 @@ void V_Core::WriteRegPS1(u32 mem, u16 value)
 				break;
 			}
 			case 0x4:
-				if (value > 0x3fff)
-					ConLog("* SPU2: Pitch setting too big: 0x%x\n", value);
-				Voices[voice].Pitch = value & 0x3fff;
+				Voices[voice].Pitch = value;
 				//ConLog("voice %x Pitch write: %x\n", voice, Voices[voice].Pitch);
 				break;
 			case 0x6:
@@ -1155,9 +1158,7 @@ static void __fastcall RegWrite_VoiceParams(u16 value)
 		break;
 
 		case 2:
-			if (value > 0x3fff)
-				ConLog("* SPU2: Pitch setting too big: 0x%x\n", value);
-			thisvoice.Pitch = value & 0x3fff;
+			thisvoice.Pitch = value;
 			break;
 
 		case 3: // ADSR1 (Envelope)

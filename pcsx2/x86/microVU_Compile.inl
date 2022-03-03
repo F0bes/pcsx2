@@ -19,12 +19,12 @@
 // Messages Called at Execution Time...
 //------------------------------------------------------------------
 
-static void __fc mVUbadOp0  (u32 prog, u32 pc) { Console.Error("microVU0 Warning: Exiting... Block contains an illegal opcode. [%04x] [%03d]", pc, prog); }
-static void __fc mVUbadOp1  (u32 prog, u32 pc) { Console.Error("microVU1 Warning: Exiting... Block contains an illegal opcode. [%04x] [%03d]", pc, prog); }
-static void __fc mVUwarning0(u32 prog, u32 pc) { Console.Error("microVU0 Warning: Exiting from Possible Infinite Loop [%04x] [%03d]", pc, prog); }
-static void __fc mVUwarning1(u32 prog, u32 pc) { Console.Error("microVU1 Warning: Exiting from Possible Infinite Loop [%04x] [%03d]", pc, prog); }
-static void __fc mVUprintPC1(u32 pc) { Console.WriteLn("Block Start PC = 0x%04x", pc); }
-static void __fc mVUprintPC2(u32 pc) { Console.WriteLn("Block End PC   = 0x%04x", pc); }
+static inline void __fc mVUbadOp0  (u32 prog, u32 pc) { Console.Error("microVU0 Warning: Exiting... Block contains an illegal opcode. [%04x] [%03d]", pc, prog); }
+static inline void __fc mVUbadOp1  (u32 prog, u32 pc) { Console.Error("microVU1 Warning: Exiting... Block contains an illegal opcode. [%04x] [%03d]", pc, prog); }
+static inline void __fc mVUwarning0(u32 prog, u32 pc) { Console.Error("microVU0 Warning: Exiting from Possible Infinite Loop [%04x] [%03d]", pc, prog); }
+static inline void __fc mVUwarning1(u32 prog, u32 pc) { Console.Error("microVU1 Warning: Exiting from Possible Infinite Loop [%04x] [%03d]", pc, prog); }
+static inline void __fc mVUprintPC1(u32 pc) { Console.WriteLn("Block Start PC = 0x%04x", pc); }
+static inline void __fc mVUprintPC2(u32 pc) { Console.WriteLn("Block End PC   = 0x%04x", pc); }
 
 //------------------------------------------------------------------
 // Program Range Checking and Setting up Ranges
@@ -295,7 +295,7 @@ __ri void eBitWarning(mV)
 	if (mVUpBlock->pState.blockType == 1)
 		Console.Error("microVU%d Warning: Branch, E-bit, Branch! [%04x]",  mVU.index, xPC);
 	if (mVUpBlock->pState.blockType == 2)
-		Console.Error("microVU%d Warning: Branch, Branch, Branch! [%04x]", mVU.index, xPC);
+		DevCon.Warning("microVU%d Warning: Branch, Branch, Branch! [%04x]", mVU.index, xPC);
 	incPC(2);
 	if (curI & _Ebit_)
 	{
@@ -469,7 +469,7 @@ void mVUtestCycles(microVU& mVU, microFlagCycles& mFC)
 	iPC = mVUstartPC;
 
 	xMOV(eax, ptr32[&mVU.cycles]);
-	if (!EmuConfig.Gamefixes.VUKickstartHack)
+	if (EmuConfig.Gamefixes.VUSyncHack)
 		xSUB(eax, mVUcycles); // Running behind, make sure we have time to run the block
 	else
 		xSUB(eax, 1); // Running ahead, make sure cycles left are above 0
@@ -547,88 +547,6 @@ __fi void mVUinitFirstPass(microVU& mVU, uptr pState, u8* thisPtr)
 // Recompiler
 //------------------------------------------------------------------
 
-//This bastardized function is used when a linked branch is in a conditional delay slot. It's messy, it's horrible, but it works.
-//Unfortunately linking the reg manually and using the normal evil block method seems to suck at this :/
-//If this is removed, test Evil Dead: Fistful of Boomstick (hangs going ingame), Mark of Kri (collision detection)
-//and Tony Hawks Project 8 (graphics are half missing, requires Negative rounding when working)
-void* mVUcompileSingleInstruction(microVU& mVU, u32 startPC, uptr pState, microFlagCycles& mFC)
-{
-
-	u8* thisPtr = x86Ptr;
-
-	// First Pass
-	iPC = startPC / 4;
-
-	mVUbranch = 0;
-	incPC(1);
-	startLoop(mVU);
-
-	mVUincCycles(mVU, 1);
-	mVUopU(mVU, 0);
-	mVUcheckBadOp(mVU);
-	if (curI & _Ebit_)
-	{
-		eBitPass1(mVU, g_branch);
-		DevCon.Warning("E Bit on single instruction");
-	}
-	if (curI & _Dbit_)
-	{
-		mVUup.dBit = true;
-	}
-	if (curI & _Tbit_)
-	{
-		mVUup.tBit = true;
-	}
-	if (curI & _Mbit_)
-	{
-		mVUup.mBit = true;
-		DevCon.Warning("M Bit on single instruction");
-	}
-	if (curI & _Ibit_)
-	{
-		mVUlow.isNOP = true;
-		mVUup.iBit = true;
-		DevCon.Warning("I Bit on single instruction");
-	}
-	else
-	{
-		incPC(-1);
-		mVUopL(mVU, 0);
-		incPC(1);
-	}
-	mVUsetCycles(mVU);
-	mVUinfo.readQ = mVU.q;
-	mVUinfo.writeQ = !mVU.q;
-	mVUinfo.readP = mVU.p && isVU1;
-	mVUinfo.writeP = !mVU.p && isVU1;
-	mVUcount++;
-	mVUsetFlagInfo(mVU);
-	incPC(1);
-
-
-	mVUsetFlags(mVU, mFC);           // Sets Up Flag instances
-	mVUoptimizePipeState(mVU);       // Optimize the End Pipeline State for nicer Block Linking
-	mVUdebugPrintBlocks(mVU, false); // Prints Start/End PC of blocks executed, for debugging...
-
-	// Second Pass
-	iPC = startPC / 4;
-	setCode();
-
-	if (mVUup.mBit)
-	{
-		xOR(ptr32[&mVU.regs().flags], VUFLAG_MFLAGSET);
-	}
-	mVUexecuteInstruction(mVU);
-
-	mVUincCycles(mVU, 1); //Just incase the is XGKick
-	if (mVUinfo.doXGKICK)
-	{
-		mVU_XGKICK_DELAY(mVU);
-	}
-
-	return thisPtr;
-}
-
 void mVUDoDBit(microVU& mVU, microFlagCycles* mFC)
 {
 	xTEST(ptr32[&VU0.VI[REG_FBRST].UL], (isVU1 ? 0x400 : 0x4));
@@ -674,7 +592,7 @@ void* mVUcompile(microVU& mVU, u32 startPC, uptr pState)
 	// First Pass
 	iPC = startPC / 4;
 	mVUsetupRange(mVU, startPC, 1); // Setup Program Bounds/Range
-	mVU.regAlloc->reset();          // Reset regAlloc
+	mVU.regAlloc->reset(false);          // Reset regAlloc
 	mVUinitFirstPass(mVU, pState, thisPtr);
 	mVUbranch = 0;
 	for (int branch = 0; mVUcount < endCount;)
@@ -769,8 +687,11 @@ void* mVUcompile(microVU& mVU, u32 startPC, uptr pState)
 			}
 
 			branchWarning(mVU);
-			mVUlow.kickcycles = mVUregs.xgkickcycles;
-			mVUregs.xgkickcycles = 0;
+			if (mVUregs.xgkickcycles)
+			{
+				mVUlow.kickcycles = mVUregs.xgkickcycles;
+				mVUregs.xgkickcycles = 0;
+			}
 			break;
 		}
 		else if (branch == 1)
@@ -789,15 +710,21 @@ void* mVUcompile(microVU& mVU, u32 startPC, uptr pState)
 		if (mVUup.mBit && !branch && !mVUup.eBit)
 		{
 			mVUregs.needExactMatch |= 7;
-			mVUlow.kickcycles = mVUregs.xgkickcycles;
-			mVUregs.xgkickcycles = 0;
+			if (mVUregs.xgkickcycles)
+			{
+				mVUlow.kickcycles = mVUregs.xgkickcycles;
+				mVUregs.xgkickcycles = 0;
+			}
 			break;
 		}
 
 		if (mVUinfo.isEOB)
 		{
-			mVUlow.kickcycles = mVUregs.xgkickcycles;
-			mVUregs.xgkickcycles = 0;
+			if (mVUregs.xgkickcycles)
+			{
+				mVUlow.kickcycles = mVUregs.xgkickcycles;
+				mVUregs.xgkickcycles = 0;
+			}
 			break;
 		}
 

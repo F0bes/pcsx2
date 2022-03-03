@@ -23,8 +23,8 @@
 //------------------------------------------------------------------
 // Micro VU - Main Functions
 //------------------------------------------------------------------
-static u8 __pagealigned vu0_RecDispatchers[mVUdispCacheSize];
-static u8 __pagealigned vu1_RecDispatchers[mVUdispCacheSize];
+alignas(__pagesize) static u8 vu0_RecDispatchers[mVUdispCacheSize];
+alignas(__pagesize) static u8 vu1_RecDispatchers[mVUdispCacheSize];
 
 static __fi void mVUthrowHardwareDeficiency(const wxChar* extFail, int vuIndex)
 {
@@ -505,4 +505,13 @@ void recMicroVU1::ResumeXGkick()
 	if (!(VU0.VI[REG_VPU_STAT].UL & 0x100))
 		return;
 	((mVUrecCallXG)microVU1.startFunctXG)();
+}
+
+void SaveStateBase::vuJITFreeze()
+{
+	if (IsSaving())
+		vu1Thread.WaitVU();
+
+	Freeze(microVU0.prog.lpState);
+	Freeze(microVU1.prog.lpState);
 }

@@ -15,17 +15,23 @@
 
 #include "PrecompiledHeader.h"
 
-#include "gui/AppSaveStates.h"
+#include "common/StringUtil.h"
+#include "SaveState.h"
 #include "Counters.h"
+#include "SaveState.h"
 
 #ifndef DISABLE_RECORDING
 
-#include "gui/AppGameDatabase.h"
+#include "gui/App.h"
+#include "gui/AppSaveStates.h"
 #include "DebugTools/Debug.h"
+#include "GameDatabase.h"
 
 #include "InputRecording.h"
 #include "InputRecordingControls.h"
 #include "Utilities/InputRecordingLogger.h"
+
+#include "gui/AppSaveStates.h"
 
 #include <fmt/format.h>
 
@@ -286,7 +292,7 @@ void InputRecording::SetupInitialState(u32 newStartingFrame)
 	if (state != InputRecordingMode::Replaying)
 	{
 		inputRec::log("Started new input recording");
-		inputRec::consoleLog(fmt::format("Filename {}", std::string(inputRecordingData.GetFilename())));
+		inputRec::consoleLog(fmt::format("Filename {}", inputRecordingData.GetFilename().ToUTF8()));
 		SetToRecordMode();
 	}
 	else
@@ -298,7 +304,7 @@ void InputRecording::SetupInitialState(u32 newStartingFrame)
 
 		incrementUndo = true;
 		inputRec::log("Replaying input recording");
-		inputRec::consoleMultiLog({fmt::format("File: {}", std::string(inputRecordingData.GetFilename())),
+		inputRec::consoleMultiLog({fmt::format("File: {}", inputRecordingData.GetFilename().ToUTF8()),
 								   fmt::format("PCSX2 Version Used: {}", std::string(inputRecordingData.GetHeader().emu)),
 								   fmt::format("Recording File Version: {}", inputRecordingData.GetHeader().version),
 								   fmt::format("Associated Game Name or ISO Filename: {}", std::string(inputRecordingData.GetHeader().gameName)),
@@ -317,7 +323,7 @@ void InputRecording::SetupInitialState(u32 newStartingFrame)
 
 void InputRecording::FailedSavestate()
 {
-	inputRec::consoleLog(fmt::format("{} is not compatible with this version of PCSX2", savestate));
+	inputRec::consoleLog(fmt::format("{} is not compatible with this version of PCSX2", savestate.ToUTF8()));
 	inputRec::consoleLog(fmt::format("Original PCSX2 version used: {}", inputRecordingData.GetHeader().emu));
 	inputRecordingData.Close();
 	initialLoad = false;
@@ -374,7 +380,7 @@ bool InputRecording::Play(wxWindow* parent, wxString filename)
 	// Either load the savestate, or restart the game
 	if (inputRecordingData.FromSaveState())
 	{
-		if (!CoreThread.IsOpen())
+		if (!GetCoreThread().IsOpen())
 		{
 			inputRec::consoleLog("Game is not open, aborting playing input recording which starts on a save-state.");
 			inputRecordingData.Close();
@@ -388,14 +394,14 @@ bool InputRecording::Play(wxWindow* parent, wxString filename)
 										 L"Savestate files (*.p2s)|*.p2s", wxFD_OPEN);
 			if (loadStateDialog.ShowModal() == wxID_CANCEL)
 			{
-				inputRec::consoleLog(fmt::format("Could not locate savestate file at location - {}", savestate));
+				inputRec::consoleLog(fmt::format("Could not locate savestate file at location - {}", savestate.ToUTF8()));
 				inputRec::log("Savestate load failed");
 				inputRecordingData.Close();
 				return false;
 			}
 
 			savestate = loadStateDialog.GetPath();
-			inputRec::consoleLog(fmt::format("Base savestate set to {}", savestate));
+			inputRec::consoleLog(fmt::format("Base savestate set to {}", savestate.ToUTF8()));
 		}
 		state = InputRecordingMode::Replaying;
 		initialLoad = true;
@@ -421,7 +427,7 @@ void InputRecording::GoToFirstFrame(wxWindow* parent)
 			if (!initiallyPaused)
 				g_InputRecordingControls.PauseImmediately();
 
-			inputRec::consoleLog(fmt::format("Could not locate savestate file at location - {}\n", savestate));
+			inputRec::consoleLog(fmt::format("Could not locate savestate file at location - {}\n", savestate.ToUTF8()));
 			wxFileDialog loadStateDialog(parent, _("Select a savestate to accompany the recording with"), L"", L"",
 										 L"Savestate files (*.p2s)|*.p2s", wxFD_OPEN);
 			int result = loadStateDialog.ShowModal();
@@ -434,7 +440,7 @@ void InputRecording::GoToFirstFrame(wxWindow* parent)
 				return;
 			}
 			savestate = loadStateDialog.GetPath();
-			inputRec::consoleLog(fmt::format ("Base savestate swapped to {}", savestate));
+			inputRec::consoleLog(fmt::format ("Base savestate swapped to {}", savestate.ToUTF8()));
 		}
 		StateCopy_LoadFromFile(savestate);
 	}
@@ -447,22 +453,18 @@ void InputRecording::GoToFirstFrame(wxWindow* parent)
 
 wxString InputRecording::resolveGameName()
 {
-	// Code loosely taken from AppCoreThread::_ApplySettings to resolve the Game Name
-	wxString gameName;
-	const wxString gameKey(SysGetDiscID());
-	if (!gameKey.IsEmpty())
+	std::string gameName;
+	const std::string gameKey(StringUtil::wxStringToUTF8String(SysGetDiscID()));
+	if (!gameKey.empty())
 	{
-		if (IGameDatabase* gameDB = AppHost_GetGameDatabase())
+		auto game = GameDatabase::findGame(gameKey);
+		if (game)
 		{
-			GameDatabaseSchema::GameEntry game = gameDB->findGame(std::string(gameKey));
-			if (game.isValid)
-			{
-				gameName = game.name;
-				gameName += L" (" + game.region + L")";
-			}
+			gameName = game->name;
+			gameName += " (" + game->region + ")";
 		}
 	}
-	return !gameName.IsEmpty() ? gameName : (wxString)Path::GetFilename(g_Conf->CurrentIso);
+	return !gameName.empty() ? StringUtil::UTF8StringToWxString(gameName) : Path::GetFilename(g_Conf->CurrentIso);
 }
 
 #endif

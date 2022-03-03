@@ -19,23 +19,24 @@
 #include "IopBios.h"
 #include "R5900.h"
 
+#include "common/Timer.h"
+#include "common/WindowInfo.h"
+extern WindowInfo g_gs_window_info;
+
 #include "Counters.h"
 #include "GS.h"
 #include "Elfheader.h"
 #include "Patch.h"
 #include "SysThreads.h"
 #include "MTVU.h"
-#include "IPC.h"
+#include "PINE.h"
 #include "FW.h"
 #include "SPU2/spu2.h"
 #include "DEV9/DEV9.h"
 #include "USB/USB.h"
-#include "gui/MemoryCardFile.h"
-#ifdef _WIN32
-#include "PAD/Windows/PAD.h"
-#else
-#include "PAD/Linux/PAD.h"
-#endif
+#include "MemoryCardFile.h"
+#include "PAD/Gamepad.h"
+#include "PerformanceMetrics.h"
 
 #include "DebugTools/MIPSAnalyst.h"
 #include "DebugTools/SymbolMap.h"
@@ -52,9 +53,9 @@
 
 bool g_CDVDReset = false;
 
-namespace IPCSettings
+namespace PINESettings
 {
-	unsigned int slot = IPC_DEFAULT_SLOT;
+	unsigned int slot = PINE_DEFAULT_SLOT;
 };
 
 // --------------------------------------------------------------------------------------
@@ -99,6 +100,14 @@ bool SysCoreThread::Cancel(const wxTimeSpan& span)
 void SysCoreThread::OnStart()
 {
 	_parent::OnStart();
+}
+
+void SysCoreThread::OnSuspendInThread()
+{
+	// We deliberately don't tear down GS here, because the state isn't saved.
+	// Which means when it reopens, you'll lose everything in VRAM. Anything
+	// which needs GS to be torn down should manually save its state.
+	TearDownSystems(static_cast<SystemsMask>(-1 & ~System_GS)); // All systems
 }
 
 void SysCoreThread::Start()
@@ -176,7 +185,25 @@ void SysCoreThread::ApplySettings(const Pcsx2Config& src)
 	m_resetProfilers = (src.Profiler != EmuConfig.Profiler);
 	m_resetVsyncTimers = (src.GS != EmuConfig.GS);
 
-	const_cast<Pcsx2Config&>(EmuConfig) = src;
+	const bool gs_settings_changed = !src.GS.OptionsAreEqual(EmuConfig.GS);
+
+	Pcsx2Config old_config;
+	old_config.CopyConfig(EmuConfig);
+	EmuConfig.CopyConfig(src);
+
+	// handle DEV9 setting changes
+	DEV9CheckChanges(old_config);
+
+	// handle GS setting changes
+	if (GetMTGS().IsOpen() && gs_settings_changed)
+	{
+		// if by change we reopen the GS, the window handles will invalidate.
+		// so, we should block here until GS has finished reinitializing, if needed.
+		Console.WriteLn("Applying GS settings...");
+		GetMTGS().ApplySettings();
+		GetMTGS().SetVSync(EmuConfig.GetEffectiveVsyncMode());
+		GetMTGS().WaitGS();
+	}
 }
 
 // --------------------------------------------------------------------------------------
@@ -218,6 +245,7 @@ void SysCoreThread::_reset_stuff_as_needed()
 
 	if (m_resetVsyncTimers)
 	{
+		GetMTGS().SetVSync(EmuConfig.GetEffectiveVsyncMode());
 		UpdateVSyncRate();
 		frameLimitReset();
 
@@ -250,8 +278,9 @@ void SysCoreThread::GameStartingInThread()
 {
 	GetMTGS().SendGameCRC(ElfCRC);
 
-	MIPSAnalyst::ScanForFunctions(ElfTextRange.first, ElfTextRange.first + ElfTextRange.second, true);
-	symbolMap.UpdateActiveSymbols();
+	MIPSAnalyst::ScanForFunctions(R5900SymbolMap, ElfTextRange.first, ElfTextRange.first + ElfTextRange.second, true);
+	R5900SymbolMap.UpdateActiveSymbols();
+	R3000SymbolMap.UpdateActiveSymbols();
 	sApp.PostAppMethod(&Pcsx2App::resetDebugger);
 
 	ApplyLoadedPatches(PPT_ONCE_ON_LOAD);
@@ -259,13 +288,13 @@ void SysCoreThread::GameStartingInThread()
 #ifdef USE_SAVESLOT_UI_UPDATES
 	UI_UpdateSysControls();
 #endif
-	if (EmuConfig.EnableIPC && m_IpcState == OFF)
+	if (EmuConfig.EnablePINE && m_PineState == OFF)
 	{
-		m_IpcState = ON;
-		m_socketIpc = std::make_unique<SocketIPC>(this, IPCSettings::slot);
+		m_PineState = ON;
+		m_pineServer = std::make_unique<PINEServer>(this, PINESettings::slot);
 	}
-	if (m_IpcState == ON && m_socketIpc->m_end)
-		m_socketIpc->Start();
+	if (m_PineState == ON && m_pineServer->m_end)
+		m_pineServer->Start();
 }
 
 bool SysCoreThread::StateCheckInThread()
@@ -302,30 +331,31 @@ void SysCoreThread::ExecuteTaskInThread()
 	PCSX2_PAGEFAULT_EXCEPT;
 }
 
-void SysCoreThread::OnSuspendInThread()
+void SysCoreThread::TearDownSystems(SystemsMask systemsToTearDown)
 {
-	DEV9close();
-	USBclose();
-	DoCDVDclose();
-	FWclose();
-	PADclose();
-	SPU2close();
-	FileMcd_EmuClose();
-	GetMTGS().Suspend();
+	if (systemsToTearDown & System_DEV9) DEV9close();
+	if (systemsToTearDown & System_USB) USBclose();
+	if (systemsToTearDown & System_CDVD) DoCDVDclose();
+	if (systemsToTearDown & System_FW) FWclose();
+	if (systemsToTearDown & System_PAD) PADclose();
+	if (systemsToTearDown & System_SPU2) SPU2close();
+	if (systemsToTearDown & System_MCD) FileMcd_EmuClose();
+
+	PerformanceMetrics::SetCPUThreadTimer(Common::ThreadCPUTimer());
 }
 
-void SysCoreThread::OnResumeInThread(bool isSuspended)
+void SysCoreThread::OnResumeInThread(SystemsMask systemsToReinstate)
 {
+	PerformanceMetrics::SetCPUThreadTimer(Common::ThreadCPUTimer::GetForCallingThread());
+	PerformanceMetrics::Reset();
+
 	GetMTGS().WaitForOpen();
-	if (isSuspended)
-	{
-		DEV9open((void*)pDsp);
-		USBopen((void*)pDsp);
-	}
-	FWopen();
-	SPU2open((void*)pDsp);
-	PADopen((void*)pDsp);
-	FileMcd_EmuOpen();
+	if (systemsToReinstate & System_DEV9) DEV9open();
+	if (systemsToReinstate & System_USB) USBopen(g_gs_window_info);
+	if (systemsToReinstate & System_FW) FWopen();
+	if (systemsToReinstate & System_SPU2) SPU2open();
+	if (systemsToReinstate & System_PAD) PADopen(g_gs_window_info);
+	if (systemsToReinstate & System_MCD) FileMcd_EmuOpen();
 }
 
 

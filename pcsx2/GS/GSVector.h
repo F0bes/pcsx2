@@ -14,14 +14,14 @@
  */
 
 #include "PrecompiledHeader.h"
-#include "GS_types.h"
+#include "GSIntrin.h"
 
 #pragma once
 
 #ifdef _WIN32
-#  define gsforceinline __forceinline
+	#define gsforceinline __forceinline
 #else
-#  define gsforceinline __forceinline __inline__
+	#define gsforceinline __forceinline __inline__
 #endif
 
 enum Align_Mode
@@ -53,30 +53,34 @@ public:
 		struct { T v[2]; };
 	};
 
-	GSVector2T()
+	GSVector2T() = default;
+
+	constexpr GSVector2T(T x): x(x), y(x)
 	{
 	}
 
-	GSVector2T(T x)
+	constexpr GSVector2T(T x, T y): x(x), y(y)
 	{
-		this->x = x;
-		this->y = x;
 	}
 
-	GSVector2T(T x, T y)
-	{
-		this->x = x;
-		this->y = y;
-	}
-
-	bool operator==(const GSVector2T& v) const
+	constexpr bool operator==(const GSVector2T& v) const
 	{
 		return x == v.x && y == v.y;
 	}
 
-	bool operator!=(const GSVector2T& v) const
+	constexpr bool operator!=(const GSVector2T& v) const
 	{
 		return x != v.x || y != v.y;
+	}
+
+	constexpr GSVector2T operator*(const GSVector2T& v) const
+	{
+		return { x * v.x, y * v.y };
+	}
+
+	constexpr GSVector2T operator/(const GSVector2T& v) const
+	{
+		return { x / v.x, y / v.y };
 	}
 };
 
@@ -124,6 +128,19 @@ gsforceinline GSVector4::GSVector4(const GSVector4i& v)
 	m = _mm_cvtepi32_ps(v);
 }
 
+gsforceinline void GSVector4i::sw32_inv(GSVector4i& a, GSVector4i& b, GSVector4i& c, GSVector4i& d)
+{
+	GSVector4 af = GSVector4::cast(a);
+	GSVector4 bf = GSVector4::cast(b);
+	GSVector4 cf = GSVector4::cast(c);
+	GSVector4 df = GSVector4::cast(d);
+
+	a = GSVector4i::cast(af.xzxz(cf));
+	b = GSVector4i::cast(af.ywyw(cf));
+	c = GSVector4i::cast(bf.xzxz(df));
+	d = GSVector4i::cast(bf.ywyw(df));
+}
+
 #if _M_SSE >= 0x501
 
 gsforceinline GSVector8i::GSVector8i(const GSVector8& v, bool truncate)
@@ -134,6 +151,14 @@ gsforceinline GSVector8i::GSVector8i(const GSVector8& v, bool truncate)
 gsforceinline GSVector8::GSVector8(const GSVector8i& v)
 {
 	m = _mm256_cvtepi32_ps(v);
+}
+
+gsforceinline void GSVector8i::sw32_inv(GSVector8i& a, GSVector8i& b)
+{
+	GSVector8 af = GSVector8::cast(a);
+	GSVector8 bf = GSVector8::cast(b);
+	a = GSVector8i::cast(af.xzxz(bf));
+	b = GSVector8i::cast(af.ywyw(bf));
 }
 
 #endif

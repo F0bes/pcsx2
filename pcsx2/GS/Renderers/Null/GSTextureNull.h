@@ -17,22 +17,26 @@
 
 #include "GS/Renderers/Common/GSTexture.h"
 
-class GSTextureNull : public GSTexture
+class GSTextureNull final : public GSTexture
 {
 	struct
 	{
-		int type, w, h, format;
+		Type type;
+		Format format;
+		int w, h;
 	} m_desc;
 
 public:
 	GSTextureNull();
-	GSTextureNull(int type, int w, int h, int format);
+	GSTextureNull(Type type, int w, int h, Format format);
 
-	int GetType() const { return m_desc.type; }
-	int GetFormat() const { return m_desc.format; }
+	Type GetType() const { return m_desc.type; }
+	Format GetFormat() const { return m_desc.format; }
 
-	bool Update(const GSVector4i& r, const void* data, int pitch, int layer = 0) { return true; }
-	bool Map(GSMap& m, const GSVector4i* r = NULL, int layer = 0) { return false; }
-	void Unmap() {}
-	bool Save(const std::string& fn) { return false; }
+	bool Update(const GSVector4i& r, const void* data, int pitch, int layer = 0) override { return true; }
+	bool Map(GSMap& m, const GSVector4i* r = NULL, int layer = 0) override { return false; }
+	void Unmap() override {}
+	bool Save(const std::string& fn) override { return false; }
+	void Swap(GSTexture* tex) override;
+	void* GetNativeHandle() const override;
 };

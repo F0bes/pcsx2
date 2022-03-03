@@ -21,6 +21,7 @@
 #if defined(__POSIX__)
 #include <pthread.h>
 #endif
+
 #include "net.h"
 #include "DEV9.h"
 #ifdef _WIN32
@@ -70,15 +71,15 @@ NetAdapter* GetNetAdapter()
 {
 	NetAdapter* na = nullptr;
 
-	switch (config.EthApi)
+	switch (EmuConfig.DEV9.EthApi)
 	{
 #ifdef _WIN32
-		case NetApi::TAP:
+		case Pcsx2Config::DEV9Options::NetApi::TAP:
 			na = static_cast<NetAdapter*>(new TAPAdapter());
 			break;
 #endif
-		case NetApi::PCAP_Bridged:
-		case NetApi::PCAP_Switched:
+		case Pcsx2Config::DEV9Options::NetApi::PCAP_Bridged:
+		case Pcsx2Config::DEV9Options::NetApi::PCAP_Switched:
 			na = static_cast<NetAdapter*>(new PCAPAdapter());
 			break;
 		default:
@@ -100,7 +101,7 @@ void InitNet()
 	if (!na)
 	{
 		Console.Error("DEV9: Failed to GetNetAdapter()");
-		config.ethEnable = false;
+		EmuConfig.DEV9.EthEnable = false;
 		return;
 	}
 
@@ -122,16 +123,16 @@ void InitNet()
 #endif
 }
 
-void ReconfigureLiveNet(Config* oldConfig)
+void ReconfigureLiveNet(const Pcsx2Config& old_config)
 {
 	//Eth
-	if (config.ethEnable)
+	if (EmuConfig.DEV9.EthEnable)
 	{
-		if (oldConfig->ethEnable)
+		if (old_config.DEV9.EthEnable)
 		{
 			//Reload Net if adapter changed
-			if (strcmp(oldConfig->Eth, config.Eth) != 0 ||
-				oldConfig->EthApi != config.EthApi)
+			if (EmuConfig.DEV9.EthDevice != old_config.DEV9.EthDevice ||
+				EmuConfig.DEV9.EthApi != old_config.DEV9.EthApi)
 			{
 				TermNet();
 				InitNet();
@@ -143,7 +144,7 @@ void ReconfigureLiveNet(Config* oldConfig)
 		else
 			InitNet();
 	}
-	else if (oldConfig->ethEnable)
+	else if (old_config.DEV9.EthEnable)
 		TermNet();
 }
 
@@ -159,36 +160,6 @@ void TermNet()
 
 		delete nif;
 		nif = nullptr;
-	}
-}
-
-const char* NetApiToString(NetApi api)
-{
-	switch (api)
-	{
-		case NetApi::PCAP_Bridged:
-			return "PCAP (Bridged)";
-		case NetApi::PCAP_Switched:
-			return "PCAP (Switched)";
-		case NetApi::TAP:
-			return "TAP";
-		default:
-			return "UNK";
-	}
-}
-
-const wchar_t* NetApiToWstring(NetApi api)
-{
-	switch (api)
-	{
-		case NetApi::PCAP_Bridged:
-			return L"PCAP (Bridged)";
-		case NetApi::PCAP_Switched:
-			return L"PCAP (Switched)";
-		case NetApi::TAP:
-			return L"TAP";
-		default:
-			return L"UNK";
 	}
 }
 
@@ -236,6 +207,57 @@ NetAdapter::~NetAdapter()
 	}
 }
 
+void NetAdapter::InspectSend(NetPacket* pkt)
+{
+	if (EmuConfig.DEV9.EthLogDNS)
+	{
+		EthernetFrame frame(pkt);
+		if (frame.protocol == (u16)EtherType::IPv4)
+		{
+			PayloadPtr* payload = static_cast<PayloadPtr*>(frame.GetPayload());
+			IP_Packet ippkt(payload->data, payload->GetLength());
+
+			if (ippkt.protocol == (u16)IP_Type::UDP)
+			{
+				IP_PayloadPtr* ipPayload = static_cast<IP_PayloadPtr*>(ippkt.GetPayload());
+				UDP_Packet udppkt(ipPayload->data, ipPayload->GetLength());
+
+				if (udppkt.destinationPort == 53)
+				{
+					Console.WriteLn("DEV9: DNS: Packet Sent To %i.%i.%i.%i",
+						ippkt.destinationIP.bytes[0], ippkt.destinationIP.bytes[1], ippkt.destinationIP.bytes[2], ippkt.destinationIP.bytes[3]);
+					dnsLogger.InspectSend(&udppkt);
+				}
+			}
+		}
+	}
+}
+void NetAdapter::InspectRecv(NetPacket* pkt)
+{
+	if (EmuConfig.DEV9.EthLogDNS)
+	{
+		EthernetFrame frame(pkt);
+		if (frame.protocol == (u16)EtherType::IPv4)
+		{
+			PayloadPtr* payload = static_cast<PayloadPtr*>(frame.GetPayload());
+			IP_Packet ippkt(payload->data, payload->GetLength());
+
+			if (ippkt.protocol == (u16)IP_Type::UDP)
+			{
+				IP_PayloadPtr* ipPayload = static_cast<IP_PayloadPtr*>(ippkt.GetPayload());
+				UDP_Packet udppkt(ipPayload->data, ipPayload->GetLength());
+
+				if (udppkt.sourcePort == 53)
+				{
+					Console.WriteLn("DEV9: DNS: Packet Sent From %i.%i.%i.%i",
+						ippkt.sourceIP.bytes[0], ippkt.sourceIP.bytes[1], ippkt.sourceIP.bytes[2], ippkt.sourceIP.bytes[3]);
+					dnsLogger.InspectRecv(&udppkt);
+				}
+			}
+		}
+	}
+}
+
 void NetAdapter::SetMACAddress(u8* mac)
 {
 	if (mac == nullptr)
@@ -276,8 +298,10 @@ void NetAdapter::InitInternalServer(ifaddrs* adapter)
 	if (adapter == nullptr)
 		Console.Error("DEV9: InitInternalServer() got nullptr for adapter");
 
-	if (config.InterceptDHCP)
+	if (EmuConfig.DEV9.InterceptDHCP)
 		dhcpServer.Init(adapter);
+
+	dnsServer.Init(adapter);
 
 	if (blocks())
 	{
@@ -295,16 +319,19 @@ void NetAdapter::ReloadInternalServer(ifaddrs* adapter)
 	if (adapter == nullptr)
 		Console.Error("DEV9: ReloadInternalServer() got nullptr for adapter");
 
-	if (config.InterceptDHCP)
+	if (EmuConfig.DEV9.InterceptDHCP)
 		dhcpServer.Init(adapter);
+
+	dnsServer.Init(adapter);
 }
 
 bool NetAdapter::InternalServerRecv(NetPacket* pkt)
 {
-	IP_Payload* updpkt = dhcpServer.Recv();
-	if (updpkt != nullptr)
+	IP_Payload* ippay;
+	ippay = dhcpServer.Recv();
+	if (ippay != nullptr)
 	{
-		IP_Packet* ippkt = new IP_Packet(updpkt);
+		IP_Packet* ippkt = new IP_Packet(ippay);
 		ippkt->destinationIP = {255, 255, 255, 255};
 		ippkt->sourceIP = internalIP;
 		EthernetFrame frame(ippkt);
@@ -314,6 +341,22 @@ bool NetAdapter::InternalServerRecv(NetPacket* pkt)
 		frame.WritePacket(pkt);
 		return true;
 	}
+
+	ippay = dnsServer.Recv();
+	if (ippay != nullptr)
+	{
+		IP_Packet* ippkt = new IP_Packet(ippay);
+		ippkt->destinationIP = ps2IP;
+		ippkt->sourceIP = internalIP;
+		EthernetFrame frame(ippkt);
+		memcpy(frame.sourceMAC, internalMAC, 6);
+		memcpy(frame.destinationMAC, ps2MAC, 6);
+		frame.protocol = (u16)EtherType::IPv4;
+		frame.WritePacket(pkt);
+		InspectRecv(pkt);
+		return true;
+	}
+
 	return false;
 }
 
@@ -333,13 +376,26 @@ bool NetAdapter::InternalServerSend(NetPacket* pkt)
 			if (udppkt.destinationPort == 67)
 			{
 				//Send DHCP
-				if (config.InterceptDHCP)
+				if (EmuConfig.DEV9.InterceptDHCP)
 					return dhcpServer.Send(&udppkt);
 			}
 		}
 
 		if (ippkt.destinationIP == internalIP)
 		{
+			if (ippkt.protocol == (u16)IP_Type::UDP)
+			{
+				ps2IP = ippkt.sourceIP;
+
+				IP_PayloadPtr* ipPayload = static_cast<IP_PayloadPtr*>(ippkt.GetPayload());
+				UDP_Packet udppkt(ipPayload->data, ipPayload->GetLength());
+
+				if (udppkt.destinationPort == 53)
+				{
+					//Send DNS
+					return dnsServer.Send(&udppkt);
+				}
+			}
 			return true;
 		}
 	}

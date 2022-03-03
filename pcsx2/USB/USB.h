@@ -22,6 +22,8 @@
 
 #include "SaveState.h"
 
+struct WindowInfo;
+
 // ---------------------------------------------------------------------
 #define USBdefs
 
@@ -38,7 +40,7 @@ s32 USBinit();
 void USBasync(u32 cycles);
 void USBshutdown();
 void USBclose();
-s32 USBopen(void* pDsp);
+s32 USBopen(const WindowInfo& wi);
 s32 USBfreeze(FreezeAction mode, freezeData* data);
 
 u8 USBread8(u32 addr);
@@ -55,5 +57,6 @@ s64 get_clock();
 
 /* usb-pad-raw.cpp */
 #if _WIN32
+#include "common/RedtapeWindows.h"
 extern HWND gsWnd;
 #endif

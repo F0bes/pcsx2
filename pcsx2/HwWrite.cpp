@@ -76,7 +76,6 @@ void __fastcall _hwWrite32( u32 mem, u32 value )
 			u128 zerofill = u128::From32(0);
 			zerofill._u32[(mem >> 2) & 0x03] = value;
 
-			DevCon.WriteLn( Color_Cyan, "Writing 32-bit FIFO data (zero-extended to 128 bits)" );
 			_hwWrite128<page>(mem & ~0x0f, &zerofill);
 		}
 		return;
@@ -306,7 +305,7 @@ void __fastcall _hwWrite8(u32 mem, u8 value)
 			sio_buffer[sio_count++] = value;
 		}
 
-		if ((sio_count == ArraySize(sio_buffer)-1) || (sio_count != 0 && sio_buffer[sio_count-1] == '\n'))
+		if ((sio_count == std::size(sio_buffer)-1) || (sio_count != 0 && sio_buffer[sio_count-1] == '\n'))
 		{
 			sio_buffer[sio_count] = 0;
 			eeConLog( ShiftJIS_ConvertString(sio_buffer) );
@@ -393,8 +392,6 @@ void __fastcall _hwWrite64( u32 mem, const mem64_t* srcval )
 		case 0x06:
 		case 0x07:
 		{
-			DevCon.WriteLn( Color_Cyan, "Writing 64-bit FIFO data (zero-extended to 128 bits)" );
-
 			u128 zerofill = u128::From32(0);
 			zerofill._u64[(mem >> 3) & 0x01] = *srcval;
 			hwWrite128<page>(mem & ~0x0f, &zerofill);

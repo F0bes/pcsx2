@@ -65,7 +65,7 @@ Panels::FramelimiterPanel::FramelimiterPanel( wxWindow* parent )
 
 	//  Implement custom hotkeys (Shift + Tab) with translatable string intact + not blank in GUI. 
 
-	s_spins += Label(_("Slow Motion Adjust:") + wxString(" ") + fmt::format("({})", wxGetApp().GlobalAccels->findKeycodeWithCommandId("Framelimiter_SlomoToggle").toTitleizedString())) | StdExpand();
+	s_spins += Label(_("Slow Motion Adjust:") + wxString::Format(" (%s)", wxGetApp().GlobalAccels->findKeycodeWithCommandId("Framelimiter_SlomoToggle").toTitleizedString())) | StdExpand();
 	s_spins += 5;
 	s_spins += m_spin_SlomoPct						| pxBorder(wxTOP, 3);
 	s_spins += Label(L"%")							| StdExpand();
@@ -73,7 +73,7 @@ Panels::FramelimiterPanel::FramelimiterPanel( wxWindow* parent )
 
 	//  Implement custom hotkeys (Tab) with translatable string intact + not blank in GUI. 
 
-	s_spins += Label(_("Turbo Adjust:") + wxString(" ") + fmt::format("({})", wxGetApp().GlobalAccels->findKeycodeWithCommandId("Framelimiter_TurboToggle").toTitleizedString())) | StdExpand();
+	s_spins += Label(_("Turbo Adjust:") + wxString::Format(" (%s)", wxGetApp().GlobalAccels->findKeycodeWithCommandId("Framelimiter_TurboToggle").toTitleizedString())) | StdExpand();
 	s_spins += 5;
 	s_spins += m_spin_TurboPct						| pxBorder(wxTOP, 3);
 	s_spins += Label(L"%") 							| StdExpand();
@@ -108,7 +108,7 @@ void Panels::FramelimiterPanel::AppStatusEvent_OnSettingsApplied()
 
 void Panels::FramelimiterPanel::ApplyConfigToGui( AppConfig& configToApply, int flags )
 {
-	const AppConfig::FramerateOptions& appfps( configToApply.Framerate );
+	const Pcsx2Config::FramerateOptions& appfps( configToApply.EmuOptions.Framerate );
 	const Pcsx2Config::GSOptions& gsconf( configToApply.EmuOptions.GS );
 
 	if( ! (flags & AppConfig::APPLY_FLAG_FROM_PRESET) )
@@ -135,7 +135,7 @@ void Panels::FramelimiterPanel::ApplyConfigToGui( AppConfig& configToApply, int 
 
 void Panels::FramelimiterPanel::Apply()
 {
-	AppConfig::FramerateOptions& appfps( g_Conf->Framerate );
+	Pcsx2Config::FramerateOptions& appfps( g_Conf->EmuOptions.Framerate );
 	Pcsx2Config::GSOptions& gsconf( g_Conf->EmuOptions.GS );
 
 	gsconf.FrameLimitEnable	= !m_check_LimiterDisable->GetValue();
@@ -176,11 +176,11 @@ Panels::FrameSkipPanel::FrameSkipPanel( wxWindow* parent )
 		),
 		//  Implement custom hotkeys (Tab) with translatable string intact + not blank in GUI.  
 		RadioPanelItem(
-			_("Skip only on Turbo, to enable press") + fmt::format("{} ({})", " ", wxGetApp().GlobalAccels->findKeycodeWithCommandId("Framelimiter_TurboToggle").toTitleizedString())
+			_("Skip only on Turbo, to enable press") + wxString::Format(" (%s)", wxGetApp().GlobalAccels->findKeycodeWithCommandId("Framelimiter_TurboToggle").toTitleizedString())
 		),
 		//  Implement custom hotkeys (Shift + F4) with translatable string intact + not blank in GUI.  
 		RadioPanelItem(
-			_("Constant skipping") + fmt::format("{} ({})", " ", wxGetApp().GlobalAccels->findKeycodeWithCommandId("Frameskip_Toggle").toTitleizedString()),
+			_("Constant skipping") + wxString::Format(" (%s)", wxGetApp().GlobalAccels->findKeycodeWithCommandId("Frameskip_Toggle").toTitleizedString()),
 			wxEmptyString,
 			_("Normal and Turbo limit rates skip frames.  Slow motion mode will still disable frameskipping.")
 		),
@@ -230,7 +230,7 @@ void Panels::FrameSkipPanel::AppStatusEvent_OnSettingsApplied()
 
 void Panels::FrameSkipPanel::ApplyConfigToGui( AppConfig& configToApply, int flags )
 {
-	const AppConfig::FramerateOptions& appfps( configToApply.Framerate );
+	const Pcsx2Config::FramerateOptions& appfps( configToApply.EmuOptions.Framerate );
 	const Pcsx2Config::GSOptions& gsconf( configToApply.EmuOptions.GS );
 
 	m_radio_SkipMode->SetSelection( appfps.SkipOnLimit ? 2 : (appfps.SkipOnTurbo ? 1 : 0) );
@@ -246,7 +246,7 @@ void Panels::FrameSkipPanel::ApplyConfigToGui( AppConfig& configToApply, int fla
 
 void Panels::FrameSkipPanel::Apply()
 {
-	AppConfig::FramerateOptions& appfps( g_Conf->Framerate );
+	Pcsx2Config::FramerateOptions& appfps( g_Conf->EmuOptions.Framerate );
 	Pcsx2Config::GSOptions& gsconf( g_Conf->EmuOptions.GS );
 
 	gsconf.FramesToDraw = m_spin_FramesToDraw->GetValue();
@@ -285,10 +285,11 @@ Panels::VideoPanel::VideoPanel( wxWindow* parent ) :
 {
 	wxPanelWithHelpers* left	= new wxPanelWithHelpers( this, wxVERTICAL );
 	wxPanelWithHelpers* right	= new wxPanelWithHelpers( this, wxVERTICAL );
-
+#ifdef  PCSX2_DEVBUILD
 	m_check_SynchronousGS = new pxCheckBox( left, _("Use Synchronized MTGS"),
 		_t("For troubleshooting potential bugs in the MTGS only, as it is potentially very slow.")
 	);
+#endif 
 
 	m_spinner_VsyncQueue = new wxSpinCtrl(left);
 	m_spinner_VsyncQueue->SetRange(0, 3);
@@ -296,7 +297,9 @@ Panels::VideoPanel::VideoPanel( wxWindow* parent ) :
 	m_restore_defaults = new wxButton(right, wxID_DEFAULT, _("Restore Defaults"));
 
 	m_spinner_VsyncQueue->SetToolTip( pxEt(L"Setting this to a lower value improves input lag, a value around 2 or 3 will slightly improve framerates. (Default is 2)"));
+#ifdef  PCSX2_DEVBUILD 
 	m_check_SynchronousGS->SetToolTip( pxEt( L"Enable this if you think MTGS thread sync is causing crashes or graphical errors. For debugging to see if GS is running at the correct speed."));
+#endif 
 
 	//GSWindowSettingsPanel* winpan = new GSWindowSettingsPanel( left );
 	//winpan->AddFrame(_("Display/Window"));
@@ -322,8 +325,10 @@ Panels::VideoPanel::VideoPanel( wxWindow* parent ) :
 	*s_vsyncs	+= Label(_("Vsyncs in MTGS Queue:")) | StdExpand();
 	*s_vsyncs	+= m_spinner_VsyncQueue | pxBorder(wxTOP, -2).Right();
 	*left		+= s_vsyncs | StdExpand();
+#ifdef  PCSX2_DEVBUILD 
 	*left		+= 2;
 	*left		+= m_check_SynchronousGS | StdExpand();
+#endif 
 
 	*s_table	+= left		| StdExpand();
 	*s_table	+= right	| StdExpand();
@@ -338,7 +343,7 @@ void Panels::VideoPanel::Defaults_Click(wxCommandEvent& evt)
 {
 	AppConfig config = *g_Conf;
 	config.EmuOptions.GS = Pcsx2Config::GSOptions();
-	config.Framerate = AppConfig::FramerateOptions();
+	config.EmuOptions.Framerate = Pcsx2Config::FramerateOptions();
 	VideoPanel::ApplyConfigToGui(config);
 	m_fpan->ApplyConfigToGui(config);
 	m_span->ApplyConfigToGui(config);
@@ -354,7 +359,9 @@ void Panels::VideoPanel::OnOpenWindowSettings( wxCommandEvent& evt )
 
 void Panels::VideoPanel::Apply()
 {
+#ifdef  PCSX2_DEVBUILD 
 	g_Conf->EmuOptions.GS.SynchronousMTGS	= m_check_SynchronousGS->GetValue();
+#endif 
 	g_Conf->EmuOptions.GS.VsyncQueueSize = m_spinner_VsyncQueue->GetValue();
 }
 
@@ -364,10 +371,12 @@ void Panels::VideoPanel::AppStatusEvent_OnSettingsApplied()
 }
 
 void Panels::VideoPanel::ApplyConfigToGui( AppConfig& configToApply, int flags ){
-	
+
+#ifdef  PCSX2_DEVBUILD 
 	m_check_SynchronousGS->SetValue( configToApply.EmuOptions.GS.SynchronousMTGS );
-	m_spinner_VsyncQueue->SetValue( configToApply.EmuOptions.GS.VsyncQueueSize );
 	m_check_SynchronousGS->Enable(!configToApply.EnablePresets);
+#endif 
+	m_spinner_VsyncQueue->SetValue( configToApply.EmuOptions.GS.VsyncQueueSize );
 
 	if( flags & AppConfig::APPLY_FLAG_MANUALLY_PROPAGATE )
 	{

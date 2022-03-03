@@ -17,16 +17,16 @@
 #include "App.h"
 #include "GSFrame.h"
 #include "AppAccelerators.h"
+#include "AppHost.h"
 #include "AppSaveStates.h"
 #include "Counters.h"
 #include "GS.h"
+#include "GS/GS.h"
 #include "MainFrame.h"
 #include "MSWstuff.h"
-#ifdef _WIN32
-#include "PAD/Windows/PAD.h"
-#else
-#include "PAD/Linux/PAD.h"
-#endif
+#include "PAD/Gamepad.h"
+#include "PerformanceMetrics.h"
+#include "common/StringUtil.h"
 
 #include "gui/Dialogs/ModalPopups.h"
 
@@ -43,11 +43,23 @@
 #include <sstream>
 #include <iomanip>
 
+#ifdef __WXGTK__
+#include <gdk/gdkx.h>
+#include <gtk/gtk.h>
+
+// Junk X11 macros...
+#ifdef DisableScreenSaver
+#undef DisableScreenSaver
+#endif
+#endif
+
+#ifdef GDK_WINDOWING_WAYLAND
+#include <gdk/gdkwayland.h>
+#endif
+
 //#define GSWindowScaleDebug
 
 static const KeyAcceleratorCode FULLSCREEN_TOGGLE_ACCELERATOR_GSPANEL=KeyAcceleratorCode( WXK_RETURN ).Alt();
-
-extern std::atomic_bool init_gspanel;
 
 void GSPanel::InitDefaultAccelerators()
 {
@@ -92,7 +104,7 @@ void GSPanel::InitDefaultAccelerators()
 	m_Accels->Map( AAC( WXK_F9 ),				"Sys_RenderswitchToggle");
 
 	m_Accels->Map( AAC( WXK_F10 ),				"Sys_LoggingToggle" );
-	m_Accels->Map( AAC( WXK_F11 ),				"Sys_FreezeGS" );
+	// m_Accels->Map( AAC( WXK_F11 ),				"Sys_FreezeGS" );
 	m_Accels->Map( AAC( WXK_F12 ),				"Sys_RecordingToggle" );
 
 	m_Accels->Map( FULLSCREEN_TOGGLE_ACCELERATOR_GSPANEL,		"FullscreenToggle" );
@@ -199,8 +211,10 @@ GSPanel::GSPanel( wxWindow* parent )
 		m_CursorShown = false;
 	}
 
-	Bind(wxEVT_CLOSE_WINDOW, &GSPanel::OnCloseWindow, this);
 	Bind(wxEVT_SIZE, &GSPanel::OnResize, this);
+#if wxCHECK_VERSION(3, 1, 3)
+	Bind(wxEVT_DPI_CHANGED, &GSPanel::OnResize, this);
+#endif
 	Bind(wxEVT_KEY_UP, &GSPanel::OnKeyDownOrUp, this);
 	Bind(wxEVT_KEY_DOWN, &GSPanel::OnKeyDownOrUp, this);
 
@@ -229,6 +243,10 @@ GSPanel::GSPanel( wxWindow* parent )
 GSPanel::~GSPanel()
 {
 	//CoreThread.Suspend( false );		// Just in case...!
+
+#ifdef WAYLAND_API
+	WaylandDestroySubsurface();
+#endif
 }
 
 void GSPanel::DoShowMouse()
@@ -243,22 +261,130 @@ void GSPanel::DoShowMouse()
 	m_HideMouseTimer.Start( 1750, true );
 }
 
+#ifdef _WIN32
+static float GetDpiScaleForWxWindow(wxWindow* window)
+{
+	static UINT(WINAPI * get_dpi_for_window)(HWND hwnd);
+	if (!get_dpi_for_window)
+	{
+		HMODULE mod = GetModuleHandle(L"user32.dll");
+		if (mod)
+			get_dpi_for_window = reinterpret_cast<decltype(get_dpi_for_window)>(GetProcAddress(mod, "GetDpiForWindow"));
+	}
+	if (!get_dpi_for_window)
+		return 1.0f;
 
-void GSPanel::OnResize(wxSizeEvent& event)
+	// less than 100% scaling seems unlikely.
+	const UINT dpi = get_dpi_for_window(window->GetHandle());
+	return (dpi > 0) ? std::max(1.0f, static_cast<float>(dpi) / 96.0f) : 1.0f;
+}
+#endif
+
+std::optional<WindowInfo> GSPanel::GetWindowInfo()
+{
+	WindowInfo ret;
+
+	const wxSize gs_vp_size(GetClientSize());
+	ret.surface_scale = static_cast<float>(GetContentScaleFactor());
+	ret.surface_width = static_cast<u32>(gs_vp_size.GetWidth());
+	ret.surface_height = static_cast<u32>(gs_vp_size.GetHeight());
+
+#if defined(_WIN32)
+	ret.type = WindowInfo::Type::Win32;
+	ret.window_handle = GetHandle();
+
+	// Windows DPI internally uses the higher pixel count, so work out by how much.
+	ret.surface_scale = GetDpiScaleForWxWindow(this);
+#elif defined(__WXGTK__)
+	GtkWidget* child_window = GTK_WIDGET(GetHandle());
+
+	// create the widget to allow to use GDK_WINDOW_* macro
+	gtk_widget_realize(child_window);
+
+	// Disable the widget double buffer, you will use the opengl one
+	gtk_widget_set_double_buffered(child_window, false);
+
+	GdkWindow* draw_window = gtk_widget_get_window(child_window);
+
+	// TODO: Do we even want to support GTK2?
+#if GTK_MAJOR_VERSION < 3
+	ret.type = WindowInfo::Type::X11;
+	ret.display_connection = GDK_WINDOW_XDISPLAY(draw_window);
+	ret.window_handle = reinterpret_cast<void*>(GDK_WINDOW_XWINDOW(draw_window));
+#else
+#ifdef GDK_WINDOWING_X11
+	if (GDK_IS_X11_WINDOW(draw_window))
+	{
+		ret.type = WindowInfo::Type::X11;
+		ret.display_connection = GDK_WINDOW_XDISPLAY(draw_window);
+		ret.window_handle = reinterpret_cast<void*>(GDK_WINDOW_XID(draw_window));
+
+		// GTK/X11 seems to not scale coordinates?
+		ret.surface_width = static_cast<u32>(ret.surface_width * ret.surface_scale);
+		ret.surface_height = static_cast<u32>(ret.surface_height * ret.surface_scale);
+	}
+#endif // GDK_WINDOWING_X11
+#if defined(GDK_WINDOWING_WAYLAND) && defined(WAYLAND_API)
+	if (GDK_IS_WAYLAND_WINDOW(draw_window))
+	{
+		wl_display* display = gdk_wayland_display_get_wl_display(gdk_window_get_display(draw_window));
+		wl_surface* parent_surface = gdk_wayland_window_get_wl_surface(draw_window);
+		if (!m_wl_child_surface && !WaylandCreateSubsurface(display, parent_surface))
+			return std::nullopt;
+
+		ret.type = WindowInfo::Type::Wayland;
+		ret.display_connection = display;
+		ret.window_handle = m_wl_child_surface;
+	}
+#endif	// GDK_WINDOWING_WAYLAND
+#endif // GTK_MAJOR_VERSION >= 3
+#elif defined(__WXOSX__)
+	ret.type = WindowInfo::Type::MacOS;
+	ret.surface_width  = static_cast<u32>(ret.surface_width  * ret.surface_scale);
+	ret.surface_height = static_cast<u32>(ret.surface_height * ret.surface_scale);
+	ret.window_handle = GetHandle();
+#endif
+
+	if (ret.type == WindowInfo::Type::Surfaceless)
+	{
+		Console.Error("Unknown window type for GSFrame.");
+		return std::nullopt;
+	}
+
+	return ret;
+}
+
+void GSPanel::OnResize(wxEvent& event)
 {
 	if( IsBeingDeleted() ) return;
 	event.Skip();
-}
 
-void GSPanel::OnCloseWindow(wxCloseEvent& evt)
-{
-	// CoreThread pausing calls MTGS suspend which calls GSPanel close on
-	// the main thread leading to event starvation. This prevents regenerating
-	// a frame handle when the user closes the window, which prevents this race
-	// condition. -- govanify
-	init_gspanel = false;
-	CoreThread.Suspend();
-	evt.Skip();		// and close it.
+	if (g_gs_window_info.type == WindowInfo::Type::Surfaceless)
+		return;
+
+	const wxSize gs_vp_size(GetClientSize());
+	const float scale = GetContentScaleFactor();
+	int width = gs_vp_size.GetWidth();
+	int height = gs_vp_size.GetHeight();
+
+	if (false
+#ifdef __WXGTK__
+		|| g_gs_window_info.type == WindowInfo::Type::X11
+#endif
+#ifdef __APPLE__
+		|| g_gs_window_info.type == WindowInfo::Type::MacOS
+#endif
+	)
+	{
+		width = static_cast<int>(width * scale);
+		height = static_cast<int>(height * scale);
+	}
+
+	g_gs_window_info.surface_width = width;
+	g_gs_window_info.surface_height = height;
+	g_gs_window_info.surface_scale = scale;
+
+	Host::GSWindowResized(width, height, scale);
 }
 
 void GSPanel::OnMouseEvent( wxMouseEvent& evt )
@@ -274,21 +400,21 @@ void GSPanel::OnMouseEvent( wxMouseEvent& evt )
 #if defined(__unix__)
 	// HACK2: In gsopen2 there is one event buffer read by both wx/gui and pad. Wx deletes
 	// the event before the pad see it. So you send key event directly to the pad.
-	keyEvent event;
+	HostKeyEvent event;
 	// FIXME how to handle double click ???
 	if (evt.ButtonDown())
 	{
-		event.evt = 4; // X equivalent of ButtonPress
+		event.type = static_cast<HostKeyEvent::Type>(4); // X equivalent of ButtonPress
 		event.key = evt.GetButton();
 	}
 	else if (evt.ButtonUp())
 	{
-		event.evt = 5; // X equivalent of ButtonRelease
+		event.type = static_cast<HostKeyEvent::Type>(5); // X equivalent of ButtonRelease
 		event.key = evt.GetButton();
 	}
 	else if (evt.Moving() || evt.Dragging())
 	{
-		event.evt = 6; // X equivalent of MotionNotify
+		event.type = static_cast<HostKeyEvent::Type>(6); // X equivalent of MotionNotify
 		long x, y;
 		evt.GetPosition(&x, &y);
 
@@ -314,7 +440,7 @@ void GSPanel::OnMouseEvent( wxMouseEvent& evt )
 	else
 	{
 		event.key = 0;
-		event.evt = 0;
+		event.type = HostKeyEvent::Type::NoEvent;
 	}
 
 	PADWriteEvent(event);
@@ -341,14 +467,14 @@ void GSPanel::OnKeyDownOrUp( wxKeyEvent& evt )
 #if defined(__unix__)
 	// HACK2: In gsopen2 there is one event buffer read by both wx/gui and pad. Wx deletes
 	// the event before the pad see it. So you send key event directly to the pad.
-	keyEvent event;
+	HostKeyEvent event;
 	event.key = evt.GetRawKeyCode();
 	if (evt.GetEventType() == wxEVT_KEY_UP)
-		event.evt = 3; // X equivalent of KEYRELEASE;
+		event.type = static_cast<HostKeyEvent::Type>(3); // X equivalent of KEYRELEASE;
 	else if (evt.GetEventType() == wxEVT_KEY_DOWN)
-		event.evt = 2; // X equivalent of KEYPRESS;
+		event.type = static_cast<HostKeyEvent::Type>(2); // X equivalent of KEYPRESS;
 	else
-		event.evt = 0;
+		event.type = HostKeyEvent::Type::NoEvent;
 
 	PADWriteEvent(event);
 #endif
@@ -424,7 +550,7 @@ void GSPanel::OnFocus( wxFocusEvent& evt )
 #if defined(__unix__)
 	// HACK2: In gsopen2 there is one event buffer read by both wx/gui and pad. Wx deletes
 	// the event before the pad see it. So you send key event directly to the pad.
-	keyEvent event = {0, 9}; // X equivalent of FocusIn;
+	HostKeyEvent event = {static_cast<HostKeyEvent::Type>(9), 0}; // X equivalent of FocusIn;
 	PADWriteEvent(event);
 #endif
 	//Console.Warning("GS frame > focus set");
@@ -440,7 +566,7 @@ void GSPanel::OnFocusLost( wxFocusEvent& evt )
 #if defined(__unix__)
 	// HACK2: In gsopen2 there is one event buffer read by both wx/gui and pad. Wx deletes
 	// the event before the pad see it. So you send key event directly to the pad.
-	keyEvent event = {0, 10}; // X equivalent of FocusOut
+	HostKeyEvent event = {static_cast<HostKeyEvent::Type>(9), 0}; // X equivalent of FocusOut
 	PADWriteEvent(event);
 #endif
 	//Console.Warning("GS frame > focus lost");
@@ -474,6 +600,101 @@ void GSPanel::OnLeftDclick(wxMouseEvent& evt)
 	//Console.WriteLn("GSPanel::OnDoubleClick: Invoking Fullscreen-Toggle accelerator.");
 	DirectKeyCommand(FULLSCREEN_TOGGLE_ACCELERATOR_GSPANEL);
 }
+
+#if defined(__WXGTK__) && defined(GDK_WINDOWING_WAYLAND) && defined(WAYLAND_API)
+
+void GSPanel::WaylandGlobalRegistryAddHandler(void* data, wl_registry* registry, uint32_t id, const char* interface, uint32_t version)
+{
+	GSPanel* pnl = static_cast<GSPanel*>(data);
+	if (std::strcmp(interface, wl_compositor_interface.name) == 0)
+	{
+		pnl->m_wl_compositor = static_cast<wl_compositor*>(wl_registry_bind(registry, id, &wl_compositor_interface, wl_compositor_interface.version));
+	}
+	else if (std::strcmp(interface, wl_subcompositor_interface.name) == 0)
+	{
+		pnl->m_wl_subcompositor = static_cast<wl_subcompositor*>(wl_registry_bind(registry, id, &wl_subcompositor_interface, wl_subcompositor_interface.version));
+	}
+}
+
+void GSPanel::WaylandGlobalRegistryRemoveHandler(void* data, wl_registry* registry, uint32_t id)
+{
+}
+
+bool GSPanel::WaylandCreateSubsurface(wl_display* display, wl_surface* surface)
+{
+	static constexpr wl_registry_listener registry_listener = {
+		&GSPanel::WaylandGlobalRegistryAddHandler,
+		&GSPanel::WaylandGlobalRegistryRemoveHandler};
+
+	wl_registry* registry = wl_display_get_registry(display);
+	wl_registry_add_listener(registry, &registry_listener, this);
+	wl_display_flush(display);
+	wl_display_roundtrip(display);
+	if (!m_wl_compositor || !m_wl_subcompositor)
+	{
+		Console.Error("Missing wl_compositor or wl_subcompositor");
+		return false;
+	}
+
+	wl_registry_destroy(registry);
+
+	m_wl_child_surface = wl_compositor_create_surface(m_wl_compositor);
+	if (!m_wl_child_surface)
+	{
+		Console.Error("Failed to create compositor surface");
+		return false;
+	}
+
+	wl_region* input_region = wl_compositor_create_region(m_wl_compositor);
+	if (!input_region)
+	{
+		Console.Error("Failed to create input region");
+		return false;
+	}
+	wl_surface_set_input_region(m_wl_child_surface, input_region);
+	wl_region_destroy(input_region);
+
+	m_wl_child_subsurface = wl_subcompositor_get_subsurface(m_wl_subcompositor, m_wl_child_surface, surface);
+	if (!m_wl_child_subsurface)
+	{
+		Console.Error("Failed to create subsurface");
+		return false;
+	}
+
+	// we want to present asynchronously to the surrounding window
+	wl_subsurface_set_desync(m_wl_child_subsurface);
+	return true;
+}
+
+void GSPanel::WaylandDestroySubsurface()
+{
+	if (m_wl_child_subsurface)
+	{
+		wl_subsurface_destroy(m_wl_child_subsurface);
+		m_wl_child_subsurface = nullptr;
+	}
+
+	if (m_wl_child_surface)
+	{
+		wl_surface_destroy(m_wl_child_surface);
+		m_wl_child_surface = nullptr;
+	}
+
+	if (m_wl_subcompositor)
+	{
+		wl_subcompositor_destroy(m_wl_subcompositor);
+		m_wl_subcompositor = nullptr;
+	}
+
+	if (m_wl_compositor)
+	{
+		wl_compositor_destroy(m_wl_compositor);
+		m_wl_compositor = nullptr;
+	}
+}
+
+#endif
+
 
 // --------------------------------------------------------------------------------------
 //  GSFrame Implementation
@@ -512,10 +733,24 @@ GSFrame::GSFrame( const wxString& title)
 
 void GSFrame::OnCloseWindow(wxCloseEvent& evt)
 {
-	// see GSPanel::OnCloseWindow
-	init_gspanel = false;
+	// if a gs dump is running, it cleans up the window once it's hidden.
+	if (GSDump::isRunning)
+	{
+		Hide();
+		return;
+	}
+
+	// but under normal operation, we want to suspend the core thread, which will hide us
+	// (except if hide-on-escape is enabled, in which case we want to force hide ourself)
 	sApp.OnGsFrameClosed( GetId() );
-	Hide();		// and don't close it.
+	if (!IsShown())
+		Hide();
+}
+
+void GSFrame::OnDestroyWindow(wxWindowDestroyEvent& evt)
+{
+	sApp.OnGsFrameDestroyed(GetId());
+	evt.Skip();
 }
 
 bool GSFrame::ShowFullScreen(bool show, bool updateConfig)
@@ -628,12 +863,6 @@ void GSFrame::AppStatusEvent_OnSettingsApplied()
 	if (!IsFullScreen() && !IsMaximized())
 		SetClientSize(g_Conf->GSWindow.WindowSize);
 	Refresh();
-
-	if( g_Conf->GSWindow.CloseOnEsc )
-	{
-		if (IsShown() && !gsopen_done)
-			Show( false );
-	}
 }
 
 GSPanel* GSFrame::GetViewport()
@@ -650,33 +879,14 @@ void GSFrame::OnUpdateTitle( wxTimerEvent& evt )
 	if (g_FrameCount == 0)
 		return;
 
-	double fps = wxGetApp().FpsManager.GetFramerate();
-
 	FastFormatUnicode cpuUsage;
-	if (m_CpuUsage.IsImplemented()) {
-		m_CpuUsage.UpdateStats();
-
-		if (!IsFullScreen()) {
-			cpuUsage.Write(L"EE: %3d%%", m_CpuUsage.GetEEcorePct());
-			cpuUsage.Write(L" | GS: %3d%%", m_CpuUsage.GetGsPct());
-
-			if (THREAD_VU1)
-				cpuUsage.Write(L" | VU: %3d%%", m_CpuUsage.GetVUPct());
-
-			pxNonReleaseCode(cpuUsage.Write(L" | UI: %3d%%", m_CpuUsage.GetGuiPct()));
-		}
+	if (!IsFullScreen()) {
+		cpuUsage.Write(L"EE: %3.0f%%", PerformanceMetrics::GetCPUThreadUsage());
+		cpuUsage.Write(L" | GS: %3.0f%%", PerformanceMetrics::GetGSThreadUsage());
 
 		if (THREAD_VU1)
-			OSDmonitor(Color_StrongGreen, "VU:", std::to_string(m_CpuUsage.GetVUPct()).c_str());
-
-		OSDmonitor(Color_StrongGreen, "EE:", std::to_string(m_CpuUsage.GetEEcorePct()).c_str());
-		OSDmonitor(Color_StrongGreen, "GS:", std::to_string(m_CpuUsage.GetGsPct()).c_str());
-		pxNonReleaseCode(OSDmonitor(Color_StrongGreen, "UI:", std::to_string(m_CpuUsage.GetGuiPct()).c_str()));
+			cpuUsage.Write(L" | VU: %3.0f%%", PerformanceMetrics::GetVUThreadUsage());
 	}
-
-	std::ostringstream out;
-	out << std::fixed << std::setprecision(2) << fps;
-	OSDmonitor(Color_StrongGreen, "FPS:", out.str());
 
 #ifdef __linux__
 	// Important Linux note: When the title is set in fullscreen the window is redrawn. Unfortunately
@@ -686,21 +896,16 @@ void GSFrame::OnUpdateTitle( wxTimerEvent& evt )
 
 	AppConfig::UiTemplateOptions& templates = g_Conf->Templates;
 
-	const float percentage = (fps * 100) / GetVerticalFrequency();
-
-	char gsDest[128];
-	gsDest[0] = 0; // No need to set whole array to NULL.
-	GSgetTitleInfo2( gsDest, sizeof(gsDest) );
-
 	wxString limiterStr = templates.LimiterUnlimited;
 
 	if( g_Conf->EmuOptions.GS.FrameLimitEnable )
 	{
-		switch( g_LimiterMode )
+		switch( EmuConfig.LimiterMode )
 		{
-			case Limit_Nominal:	limiterStr = templates.LimiterNormal; break;
-			case Limit_Turbo:	limiterStr = templates.LimiterTurbo; break;
-			case Limit_Slomo:	limiterStr = templates.LimiterSlowmo; break;
+			case LimiterModeType::Nominal:	limiterStr = templates.LimiterNormal; break;
+			case LimiterModeType::Turbo:	limiterStr = templates.LimiterTurbo; break;
+			case LimiterModeType::Slomo:	limiterStr = templates.LimiterSlowmo; break;
+			case LimiterModeType::Unlimited: limiterStr = templates.LimiterUnlimited; break;
 		}
 	}
 
@@ -723,14 +928,17 @@ void GSFrame::OnUpdateTitle( wxTimerEvent& evt )
 	wxString title = templates.TitleTemplate;
 #endif
 	
+	std::string gsStats;
+	GSgetTitleStats(gsStats);
+
 	title.Replace(L"${slot}",		pxsFmt(L"%d", States_GetCurrentSlot()));
 	title.Replace(L"${limiter}",	limiterStr);
-	title.Replace(L"${speed}",		pxsFmt(L"%3d%%", lround(percentage)));
-	title.Replace(L"${vfps}",		pxsFmt(L"%.02f", fps));
+	title.Replace(L"${speed}",		pxsFmt(L"%3d%%", lround(PerformanceMetrics::GetSpeed())));
+	title.Replace(L"${vfps}",		pxsFmt(L"%.02f", PerformanceMetrics::GetFPS()));
 	title.Replace(L"${cpuusage}",	cpuUsage);
 	title.Replace(L"${omodef}",		omodef);
 	title.Replace(L"${omodei}",		omodei);
-	title.Replace(L"${gsdx}",		fromUTF8(gsDest));
+	title.Replace(L"${gsdx}", StringUtil::UTF8StringToWxString(gsStats));
 	title.Replace(L"${videomode}",	ReportVideoMode());
 	if (CoreThread.IsPaused() && !GSDump::isRunning)
 		title = templates.Paused + title;

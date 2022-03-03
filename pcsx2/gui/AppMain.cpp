@@ -18,14 +18,10 @@
 #include "MainFrame.h"
 #include "GSFrame.h"
 #include "GS.h"
+#include "Host.h"
 #include "AppSaveStates.h"
-#include "AppGameDatabase.h"
 #include "AppAccelerators.h"
-#ifdef _WIN32
-#include "PAD/Windows/PAD.h"
-#else
-#include "PAD/Linux/PAD.h"
-#endif
+#include "PAD/Gamepad.h"
 
 #include "ps2/BiosTools.h"
 
@@ -41,6 +37,8 @@
 #endif
 
 #include "common/IniInterface.h"
+#include "common/FileSystem.h"
+#include "common/StringUtil.h"
 #include "common/AppTrait.h"
 
 #include <wx/stdpaths.h>
@@ -52,6 +50,10 @@
 #ifdef __WXGTK__
 #include <gdk/gdkx.h>
 #include <gtk/gtk.h>
+
+#ifdef GDK_WINDOWING_WAYLAND
+#include <gdk/gdkwayland.h>
+#endif
 #endif
 
 // Safe to remove these lines when this is handled properly.
@@ -71,63 +73,17 @@ wxIMPLEMENT_APP(Pcsx2App);
 
 std::unique_ptr<AppConfig> g_Conf;
 
-uptr pDsp[2];
+WindowInfo g_gs_window_info;
 
-// Returns a string message telling the user to consult guides for obtaining a legal BIOS.
-// This message is in a function because it's used as part of several dialogs in PCSX2 (there
-// are multiple variations on the BIOS and BIOS folder checks).
-wxString BIOS_GetMsg_Required()
+static bool CheckForBIOS()
 {
-	return pxE(L"PCSX2 requires a PS2 BIOS in order to run.  For legal reasons, you *must* obtain a BIOS from an actual PS2 unit that you own (borrowing doesn't count).  Please consult the FAQs and Guides for further instructions."
-		);
-}
+	if (IsBIOSAvailable(g_Conf->EmuOptions.FullpathToBios()))
+		return true;
 
-class BIOSLoadErrorEvent : public pxExceptionEvent
-{
-	typedef pxExceptionEvent _parent;
+	wxString error = pxE(L"PCSX2 requires a PS2 BIOS in order to run.  For legal reasons, you *must* obtain a BIOS from an actual PS2 unit that you own (borrowing doesn't count).  Please consult the FAQs and Guides for further instructions.");
 
-public:
-	BIOSLoadErrorEvent(BaseException* ex = NULL) : _parent(ex) {}
-	BIOSLoadErrorEvent(const BaseException& ex) : _parent(ex) {}
-
-	virtual ~BIOSLoadErrorEvent() = default;
-	virtual BIOSLoadErrorEvent *Clone() const { return new BIOSLoadErrorEvent(*this); }
-
-protected:
-	void InvokeEvent();
-
-};
-
-static bool HandleBIOSError(BaseException& ex)
-{
-	if (!pxDialogExists(L"Dialog:" + Dialogs::SysConfigDialog::GetNameStatic()))
-	{
-		if (!Msgbox::OkCancel(ex.FormatDisplayMessage() + L"\n\n" + BIOS_GetMsg_Required()
-			+ L"\n\n" + _("Press Ok to go to the BIOS Configuration Panel."), _("PS2 BIOS Error")))
-			return false;
-	}
-	else
-	{
-		Msgbox::Alert(ex.FormatDisplayMessage() + L"\n\n" + BIOS_GetMsg_Required(), _("PS2 BIOS Error"));
-	}
-
-	g_Conf->ComponentsTabName = L"BIOS";
-
-	return AppOpenModalDialog<Dialogs::SysConfigDialog>(L"BIOS") != wxID_CANCEL;
-}
-
-void BIOSLoadErrorEvent::InvokeEvent()
-{
-	if (!m_except) return;
-
-	ScopedExcept deleteMe(m_except);
-	m_except = NULL;
-
-	if (!HandleBIOSError(*deleteMe))
-	{
-		Console.Warning("User canceled BIOS configuration.");
-		Msgbox::Alert(_("Warning! Valid BIOS has not been selected. PCSX2 may be inoperable."));
-	}
+	Msgbox::Alert(error, _("PS2 BIOS Error"));
+	return false;
 }
 
 // Allows for activating menu actions from anywhere in PCSX2.
@@ -202,9 +158,9 @@ extern int TranslateVKToWXK( u32 keysym );
 extern int TranslateGDKtoWXK( u32 keysym );
 #endif
 
-void Pcsx2App::PadKeyDispatch( const keyEvent& ev )
+void Pcsx2App::PadKeyDispatch(const HostKeyEvent& ev)
 {
-	m_kevt.SetEventType( ( ev.evt == KEYPRESS ) ? wxEVT_KEY_DOWN : wxEVT_KEY_UP );
+	m_kevt.SetEventType( ( ev.type == HostKeyEvent::Type::KeyPressed ) ? wxEVT_KEY_DOWN : wxEVT_KEY_UP );
 
 //returns 0 for normal keys and a WXK_* value for special keys
 #ifdef __WXMSW__
@@ -398,44 +354,6 @@ wxAppTraits* Pcsx2App::CreateTraits()
 	return new Pcsx2AppTraits;
 }
 
-// --------------------------------------------------------------------------------------
-//  FramerateManager  (implementations)
-// --------------------------------------------------------------------------------------
-void FramerateManager::Reset()
-{
-	//memzero( m_fpsqueue );
-	m_initpause = FramerateQueueDepth;
-	m_fpsqueue_writepos = 0;
-
-	for( uint i=0; i<FramerateQueueDepth; ++i )
-		m_fpsqueue[i] = GetCPUTicks();
-
-	Resume();
-}
-
-// 
-void FramerateManager::Resume()
-{
-}
-
-void FramerateManager::DoFrame()
-{
-	m_fpsqueue_writepos = (m_fpsqueue_writepos + 1) % FramerateQueueDepth;
-	m_fpsqueue[m_fpsqueue_writepos] = GetCPUTicks();
-
-	// intentionally leave 1 on the counter here, since ultimately we want to divide the 
-	// final result (in GetFramerate() by QueueDepth-1.
-	if( m_initpause > 1 ) --m_initpause;
-}
-
-double FramerateManager::GetFramerate() const
-{
-	if( m_initpause > (FramerateQueueDepth/2) ) return 0.0;
-	const u64 delta = m_fpsqueue[m_fpsqueue_writepos] - m_fpsqueue[(m_fpsqueue_writepos + 1) % FramerateQueueDepth];
-	const u32 ticks_per_frame = (u32)(delta / (FramerateQueueDepth-m_initpause));
-	return (double)GetTickFrequency() / (double)ticks_per_frame;
-}
-
 // ----------------------------------------------------------------------------
 //         Pcsx2App Event Handlers
 // ----------------------------------------------------------------------------
@@ -443,42 +361,16 @@ double FramerateManager::GetFramerate() const
 // LogicalVsync - Event received from the AppCoreThread (EEcore) for each vsync,
 // roughly 50/60 times a second when frame limiting is enabled, and up to 10,000 
 // times a second if not (ok, not quite, but you get the idea... I hope.)
-extern uint eecount_on_last_vdec;
-extern bool FMVstarted;
-extern bool EnableFMV;
-extern bool renderswitch;
-
 void Pcsx2App::LogicalVsync()
 {
 	if( AppRpc_TryInvokeAsync( &Pcsx2App::LogicalVsync ) ) return;
 
 	if( !SysHasValidState() ) return;
 
-	// Update / Calculate framerate!
-
-	FpsManager.DoFrame();
-
-	if (g_Conf->GSWindow.FMVAspectRatioSwitch != FMV_AspectRatio_Switch_Off) {
-		if (EnableFMV) {
-			DevCon.Warning("FMV on");
-			GSSetFMVSwitch(true);
-			EnableFMV = false;
-		}
-
-		if (FMVstarted) {
-			int diff = cpuRegs.cycle - eecount_on_last_vdec;
-			if (diff > 60000000 ) {
-				DevCon.Warning("FMV off");
-				GSSetFMVSwitch(false);
-				FMVstarted = false;
-			}
-		}
-	}
-
 	if( (wxGetApp().GetGsFramePtr() != NULL) )
 		PADupdate(0);
 
-	while( const keyEvent* ev = PADkeyEvent() )
+	while( const HostKeyEvent* ev = PADkeyEvent() )
 	{
 		if( ev->key == 0 ) break;
 
@@ -487,7 +379,7 @@ void Pcsx2App::LogicalVsync()
 		// sucked and we had multiple components battling for input processing. I managed to make
 		// most of them go away during the plugin merge but GS still needs to process the inputs,
 		// we might want to move all the input handling in a frontend-specific file in the future -- govanify
-		GSkeyEvent((GSKeyEventData*)ev);
+		GSkeyEvent(*ev);
 		PadKeyDispatch( *ev );
 	}
 }
@@ -529,7 +421,7 @@ void Pcsx2App::HandleEvent(wxEvtHandler* handler, wxEventFunction func, wxEvent&
 				// When the GSFrame CoreThread is paused, so is the logical VSync
 				// Meaning that we have to grab the user-input through here to potentially
 				// resume emulation.
-				if (const keyEvent* ev = PADkeyEvent() )
+				if (const HostKeyEvent* ev = PADkeyEvent() )
 				{
 					if( ev->key != 0 )
 					{
@@ -547,19 +439,6 @@ void Pcsx2App::HandleEvent(wxEvtHandler* handler, wxEventFunction func, wxEvent&
 	{
 		Console.Warning( ex.FormatDiagnosticMessage() );
 		Exit();
-	}
-	// ----------------------------------------------------------------------------
-	catch( Exception::BiosLoadFailed& ex )
-	{
-		// Commandline 'nogui' users will not receive an error message, but at least PCSX2 will
-		// terminate properly.
-		GSFrame* gsframe = wxGetApp().GetGsFramePtr();
-		gsframe->Close();
-
-		Console.Error(ex.FormatDiagnosticMessage());
-
-		if (wxGetApp().HasGUI())
-			AddIdleEvent(BIOSLoadErrorEvent(ex));
 	}
 	// ----------------------------------------------------------------------------
 	catch( Exception::SaveStateLoadError& ex)
@@ -721,8 +600,7 @@ void AppApplySettings( const AppConfig* oldconf )
 	g_Conf->Folders.Snapshots.Mkdir();
 	g_Conf->Folders.Cheats.Mkdir();
 	g_Conf->Folders.CheatsWS.Mkdir();
-
-	g_Conf->EmuOptions.BiosFilename = g_Conf->FullpathToBios();
+	g_Conf->Folders.Textures.Mkdir();
 
 	RelocateLogfile();
 
@@ -736,7 +614,7 @@ void AppApplySettings( const AppConfig* oldconf )
 	// Memcards generally compress very well via NTFS compression.
 
 	#ifdef __WXMSW__
-	NTFS_CompressFile( g_Conf->Folders.MemoryCards.ToString(), g_Conf->McdCompressNTFS );
+	NTFS_CompressFile( g_Conf->Folders.MemoryCards.ToString(), g_Conf->EmuOptions.McdCompressNTFS );
 	#endif
 	sApp.DispatchEvent( AppStatus_SettingsApplied );
 
@@ -851,41 +729,12 @@ void Pcsx2App::OpenGsPanel()
 		gsFrame->SetSize( oldsize );
 	}
 
-    pxAssertDev( !gsopen_done, "GS must be closed prior to opening a new Gs Panel!" );
+	gsFrame->ShowFullScreen(g_Conf->GSWindow.IsFullscreen);
+	wxApp::ProcessPendingEvents();
 
-#ifdef __WXGTK__
-	// The x window/display are actually very deeper in the widget. You need both display and window
-	// because unlike window there are unrelated. One could think it would be easier to send directly the GdkWindow.
-	// Unfortunately there is a race condition between gui and gs threads when you called the
-	// GDK_WINDOW_* macro. To be safe I think it is best to do here. -- Gregory
-
-	// GTK_PIZZA is an internal interface of wx, therefore they decide to
-	// remove it on wx 3. I tryed to replace it with gtk_widget_get_window but
-	// unfortunately it creates a gray box in the middle of the window on some
-	// users.
-
-	GtkWidget *child_window = GTK_WIDGET(gsFrame->GetViewport()->GetHandle());
-
-	gtk_widget_realize(child_window); // create the widget to allow to use GDK_WINDOW_* macro
-	gtk_widget_set_double_buffered(child_window, false); // Disable the widget double buffer, you will use the opengl one
-
-	GdkWindow* draw_window = gtk_widget_get_window(child_window);
-
-#if GTK_MAJOR_VERSION < 3
-	Window Xwindow = GDK_WINDOW_XWINDOW(draw_window);
-#else
-	Window Xwindow = GDK_WINDOW_XID(draw_window);
-#endif
-	Display* XDisplay = GDK_WINDOW_XDISPLAY(draw_window);
-
-	pDsp[0] = (uptr)XDisplay;
-	pDsp[1] = (uptr)Xwindow;
-#else
-	pDsp[0] = (uptr)gsFrame->GetViewport()->GetHandle();
-	pDsp[1] = NULL;
-#endif
-
-	gsFrame->ShowFullScreen( g_Conf->GSWindow.IsFullscreen );
+	std::optional<WindowInfo> wi = gsFrame->GetViewport()->GetWindowInfo();
+	pxAssertDev(wi.has_value(), "GS frame has a valid native window");
+	g_gs_window_info = std::move(*wi);
 
 #ifndef DISABLE_RECORDING
 	// Enable New & Play after the first game load of the session
@@ -899,10 +748,19 @@ void Pcsx2App::OpenGsPanel()
 #endif
 }
 
+
 void Pcsx2App::CloseGsPanel()
 {
 	if (AppRpc_TryInvoke(&Pcsx2App::CloseGsPanel))
 		return;
+
+	GSFrame* gsFrame = GetGsFramePtr();
+	if (gsFrame)
+	{
+		// we unreference the window first, that way it doesn't try to suspend on close and deadlock
+		OnGsFrameDestroyed(gsFrame->GetId());
+		gsFrame->Destroy();
+	}
 }
 
 void Pcsx2App::OnGsFrameClosed(wxWindowID id)
@@ -918,6 +776,16 @@ void Pcsx2App::OnGsFrameClosed(wxWindowID id)
 		// right now there's no way to resume from suspend without GUI.
 		PrepForExit();
 	}
+}
+
+void Pcsx2App::OnGsFrameDestroyed(wxWindowID id)
+{
+	if ((m_id_GsFrame == wxID_ANY) || (m_id_GsFrame != id))
+		return;
+
+	m_id_GsFrame = wxID_ANY;
+	g_gs_window_info = {};
+
 #ifndef DISABLE_RECORDING
 	// Disable recording controls that only make sense if the game is running
 	sMainFrame.enableRecordingMenuItem(MenuId_Recording_FrameAdvance, false);
@@ -998,13 +866,15 @@ protected:
 		DbgCon.WriteLn( Color_Gray, "(SysExecute) received." );
 
 		CoreThread.ResetQuick();
-		symbolMap.Clear();
+		R5900SymbolMap.Clear();
+		R3000SymbolMap.Clear();
 		CBreakPoints::SetSkipFirst(BREAKPOINT_EE, 0);
 		CBreakPoints::SetSkipFirst(BREAKPOINT_IOP, 0);
 		// This function below gets called again from AppCoreThread.cpp and will pass the current ISO regardless if we
 		// are starting an ELF. In terms of symbol loading this doesn't matter because AppCoreThread.cpp doesn't clear the symbol map
 		// and we _only_ read symbols if the map is empty
-		CDVDsys_SetFile(CDVD_SourceType::Iso, m_UseELFOverride ? m_elf_override : g_Conf->CurrentIso );
+		CDVDsys_SetFile(CDVD_SourceType::Disc, StringUtil::wxStringToUTF8String(g_Conf->Folders.RunDisc) );
+		CDVDsys_SetFile(CDVD_SourceType::Iso, StringUtil::wxStringToUTF8String(m_UseELFOverride ? m_elf_override : g_Conf->CurrentIso) );
 		if( m_UseCDVDsrc )
 			CDVDsys_ChangeSource( m_cdvdsrc_type );
 		else if( CDVD == NULL )
@@ -1021,6 +891,9 @@ protected:
 // fresh VM with the requested sources.
 void Pcsx2App::SysExecute()
 {
+	if (!CheckForBIOS())
+		return;
+
 	SysExecutorThread.PostEvent( new SysExecEvent_Execute() );
 }
 
@@ -1029,6 +902,9 @@ void Pcsx2App::SysExecute()
 // sources.
 void Pcsx2App::SysExecute( CDVD_SourceType cdvdsrc, const wxString& elf_override )
 {
+	if (!CheckForBIOS())
+		return;
+
 	SysExecutorThread.PostEvent( new SysExecEvent_Execute(cdvdsrc, elf_override) );
 #ifndef DISABLE_RECORDING
 	if (g_Conf->EmuOptions.EnableRecordingTools)
@@ -1098,16 +974,6 @@ MainEmuFrame* GetMainFramePtr()
 SysMainMemory& GetVmMemory()
 {
 	return wxGetApp().GetVmReserve();
-}
-
-SysCoreThread& GetCoreThread()
-{
-	return CoreThread;
-}
-
-SysMtgsThread& GetMTGS()
-{
-	return mtgsThread;
 }
 
 SysCpuProviderPack& GetCpuProviders()

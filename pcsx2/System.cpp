@@ -148,41 +148,7 @@ void SysOutOfMemory_EmergencyResponse(uptr blocksize)
 
 #include "svnrev.h"
 
-const Pcsx2Config EmuConfig;
-
-// Provides an accessor for quick modification of GS options.  All GS options are allowed to be
-// changed "on the fly" by the *main/gui thread only*.
-Pcsx2Config::GSOptions& SetGSConfig()
-{
-	//DbgCon.WriteLn( "Direct modification of EmuConfig.GS detected" );
-	AffinityAssert_AllowFrom_MainUI();
-	return const_cast<Pcsx2Config::GSOptions&>(EmuConfig.GS);
-}
-
-// Provides an accessor for quick modification of Recompiler options.
-// Used by loadGameSettings() to set clamp modes via database at game startup.
-Pcsx2Config::RecompilerOptions& SetRecompilerConfig()
-{
-	//DbgCon.WriteLn( "Direct modification of EmuConfig.Gamefixes detected" );
-	AffinityAssert_AllowFrom_MainUI();
-	return const_cast<Pcsx2Config::RecompilerOptions&>(EmuConfig.Cpu.Recompiler);
-}
-
-// Provides an accessor for quick modification of Gamefix options.
-// Used by loadGameSettings() to set gamefixes via database at game startup.
-Pcsx2Config::GamefixOptions& SetGameFixConfig()
-{
-	//DbgCon.WriteLn( "Direct modification of EmuConfig.Gamefixes detected" );
-	AffinityAssert_AllowFrom_MainUI();
-	return const_cast<Pcsx2Config::GamefixOptions&>(EmuConfig.Gamefixes);
-}
-
-TraceLogFilters& SetTraceConfig()
-{
-	//DbgCon.WriteLn( "Direct modification of EmuConfig.TraceLog detected" );
-	AffinityAssert_AllowFrom_MainUI();
-	return const_cast<TraceLogFilters&>(EmuConfig.Trace);
-}
+Pcsx2Config EmuConfig;
 
 
 // This function should be called once during program execution.
@@ -190,13 +156,21 @@ void SysLogMachineCaps()
 {
 	if ( !PCSX2_isReleaseVersion )
 	{
-		Console.WriteLn(Color_StrongGreen, "\nPCSX2 %u.%u.%u-%lld %s"
+		if (GIT_TAGGED_COMMIT) // Nightly builds
+		{
+			// tagged commit - more modern implementation of dev build versioning
+			// - there is no need to include the commit - that is associated with the tag, 
+			// - git is implied and the tag is timestamped
+			Console.WriteLn(Color_StrongGreen, "\nPCSX2 Nightly - %s Compiled on %s", GIT_TAG, __DATE__);
+		} else {
+			Console.WriteLn(Color_StrongGreen, "\nPCSX2 %u.%u.%u-%lld"
 #ifndef DISABLE_BUILD_DATE
-			"- compiled on " __DATE__
+											   "- compiled on " __DATE__
 #endif
-			, PCSX2_VersionHi, PCSX2_VersionMid, PCSX2_VersionLo,
-			SVN_REV, SVN_MODS ? "(modded)" : ""
-			);
+				,
+				PCSX2_VersionHi, PCSX2_VersionMid, PCSX2_VersionLo,
+				SVN_REV);
+		}
 	}
 	else { // shorter release version string
 		Console.WriteLn(Color_StrongGreen, "PCSX2 %u.%u.%u-%lld"
@@ -267,7 +241,7 @@ void SysLogMachineCaps()
 
 	Console.Newline();
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(PCSX2_CORE)
 	CheckIsUserOnHighPerfPowerPlan();
 #endif
 }
@@ -357,7 +331,13 @@ static wxString GetMemoryErrorVM()
 
 namespace HostMemoryMap {
 	// For debuggers
-	uptr EEmem, IOPmem, VUmem, EErec, IOPrec, VIF0rec, VIF1rec, mVU0rec, mVU1rec, bumpAllocator;
+	extern "C" {
+#ifdef _WIN32
+	_declspec(dllexport) uptr EEmem, IOPmem, VUmem, EErec, IOPrec, VIF0rec, VIF1rec, mVU0rec, mVU1rec, bumpAllocator;
+#else
+	__attribute__((visibility("default"), used)) uptr EEmem, IOPmem, VUmem, EErec, IOPrec, VIF0rec, VIF1rec, mVU0rec, mVU1rec, bumpAllocator;
+#endif
+	}
 }
 
 /// Attempts to find a spot near static variables for the main memory
@@ -478,6 +458,9 @@ void SysMainMemory::DecommitAll()
 
 	closeNewVif(0);
 	closeNewVif(1);
+
+	g_GameStarted = false;
+	g_GameLoading = false;
 
 	vtlb_Core_Free();
 }

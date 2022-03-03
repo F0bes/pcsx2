@@ -38,12 +38,12 @@ const wchar_t* dialog_message(int ID, bool* updateText = NULL);
 const char* dialog_message(int ID, bool* updateText = NULL);
 #endif
 
-#ifndef _WIN32
 enum
 {
 	// Renderer
 	IDC_FILTER,
 	// Hardware Renderer
+	IDC_PRELOAD_TEXTURES,
 	IDC_ACCURATE_DATE,
 	IDC_PALTEX,
 	IDC_CONSERVATIVE_FB,
@@ -66,6 +66,7 @@ enum
 	IDC_SKIPDRAWHACKEDIT,
 	IDC_SKIPDRAWOFFSET,
 	IDC_SKIPDRAWOFFSETEDIT,
+	IDC_TEX_IN_RT,
 	// Upscaling Hacks
 	IDC_ALIGN_SPRITE,
 	IDC_MERGE_PP_SPRITE,
@@ -91,22 +92,9 @@ enum
 	IDC_OSD_MONITOR,
 	IDC_OSD_MAX_LOG,
 	IDC_OSD_MAX_LOG_EDIT,
-	// Shader
-	IDR_CONVERT_GLSL,
-	IDR_FXAA_FX,
-	IDR_INTERLACE_GLSL,
-	IDR_MERGE_GLSL,
-	IDR_SHADEBOOST_GLSL,
-	IDR_COMMON_GLSL,
-	IDR_TFX_VGS_GLSL,
-	IDR_TFX_FS_GLSL,
-	IDR_TFX_CL,
 	// Shader Configuration
 	IDC_SHADEBOOST,
 	IDC_SHADER_FX,
 	IDC_FXAA,
 	IDC_LINEAR_PRESENT,
-	// Fonts
-	IDR_FONT_ROBOTO,
 };
-#endif

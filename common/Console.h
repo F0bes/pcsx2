@@ -125,6 +125,11 @@ struct IConsoleWriter
 	bool WriteLn(const wxString fmt, ...) const;
 	bool Error(const wxString fmt, ...) const;
 	bool Warning(const wxString fmt, ...) const;
+
+	bool WriteLn(ConsoleColors color, const std::string& str) const;
+	bool WriteLn(const std::string& str) const;
+	bool Error(const std::string& str) const;
+	bool Warning(const std::string& str) const;
 };
 
 // --------------------------------------------------------------------------------------
@@ -234,7 +239,7 @@ public:
 
 extern IConsoleWriter Console;
 
-#if defined(__unix__) || defined(__APPLE__)
+#if defined(__POSIX__)
 extern void Console_SetStdout(FILE* fp);
 #endif
 extern void Console_SetActiveHandler(const IConsoleWriter& writer, FILE* flushfp = NULL);

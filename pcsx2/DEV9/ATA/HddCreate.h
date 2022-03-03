@@ -15,25 +15,28 @@
 
 #pragma once
 
+#ifndef PCSX2_CORE
 #include <wx/progdlg.h>
+#endif
 
 #include <string>
 #include <thread>
 #include <atomic>
 #include <condition_variable>
 #include <chrono>
-#include "ghc/filesystem.h"
 
 class HddCreate
 {
 public:
-	ghc::filesystem::path filePath;
-	int neededSize;
+	fs::path filePath;
+	u64 neededSize;
 
 	std::atomic_bool errored{false};
 
 private:
+#ifndef PCSX2_CORE
 	wxProgressDialog* progressDialog;
+#endif
 	std::atomic_int written{0};
 
 	std::thread fileThread;
@@ -52,5 +55,5 @@ public:
 private:
 	void SetFileProgress(int currentSize);
 	void SetError();
-	void WriteImage(ghc::filesystem::path hddPath, int reqSizeMB);
+	void WriteImage(fs::path hddPath, u64 reqSizeBytes);
 };

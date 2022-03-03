@@ -19,7 +19,11 @@
 
 #include "R5900OpcodeTables.h"
 #include "R5900Exceptions.h"
+#ifndef PCSX2_CORE
 #include "System/SysThreads.h"
+#else
+#include "VMManager.h"
+#endif
 
 #include "Elfheader.h"
 
@@ -39,13 +43,6 @@ static void intEventTest();
 
 // These macros are used to assemble the repassembler functions
 
-static void debugI()
-{
-	if( !IsDevBuild ) return;
-	if( cpuRegs.GPR.n.r0.UD[0] || cpuRegs.GPR.n.r0.UD[1] ) Console.Error("R0 is not zero!!!!");
-}
-
-
 void intBreakpoint(bool memcheck)
 {
 	u32 pc = cpuRegs.pc;
@@ -60,7 +57,9 @@ void intBreakpoint(bool memcheck)
 	}
 
 	CBreakPoints::SetBreakpointTriggered(true);
+#ifndef PCSX2_CORE
 	GetCoreThread().PauseSelfDebug();
+#endif
 	throw Exception::ExitCpuExecute();
 }
 
@@ -73,7 +72,7 @@ void intMemcheck(u32 op, u32 bits, bool store)
 	if (bits == 128)
 		start &= ~0x0F;
 
-	start = standardizeBreakpointAddress(BREAKPOINT_EE, start);
+	start = standardizeBreakpointAddress(start);
 	u32 end = start + bits/8;
 	
 	auto checks = CBreakPoints::GetMemChecks();
@@ -134,7 +133,7 @@ static void execI()
 	// Extra note: due to some cycle count issue PCSX2's internal debugger is
 	// not yet usable with the interpreter
 //#define EXTRA_DEBUG
-#ifdef EXTRA_DEBUG
+#if defined(EXTRA_DEBUG) || defined(PCSX2_DEVBUILD)
 	// check if any breakpoints or memchecks are triggered by this instruction
 	if (isBreakpointNeeded(cpuRegs.pc))
 		intBreakpoint(false);
@@ -149,11 +148,6 @@ static void execI()
 
 	// interprete instruction
 	cpuRegs.code = memRead32( pc );
-	// Honestly I think this code is useless nowadays.
-#ifdef EXTRA_DEBUG
-	if( IsDebugBuild )
-		debugI();
-#endif
 
 	const OPCODE& opcode = GetCurrentInstruction();
 #if 0
@@ -582,8 +576,13 @@ static void intExecute()
 
 static void intCheckExecutionState()
 {
+#ifndef PCSX2_CORE
 	if( GetCoreThread().HasPendingStateChangeRequest() )
 		throw Exception::ExitCpuExecute();
+#else
+	if (VMManager::Internal::IsExecutionInterrupted())
+		throw Exception::ExitCpuExecute();
+#endif
 }
 
 static void intStep()

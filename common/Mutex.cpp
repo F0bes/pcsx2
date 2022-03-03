@@ -15,7 +15,6 @@
 
 #include "common/Threading.h"
 #include "common/wxBaseTools.h"
-#include "common/wxGuiTools.h"
 #include "common/ThreadingInternal.h"
 
 namespace Threading
@@ -205,7 +204,6 @@ void Threading::Mutex::Acquire()
 	}
 	else if (_WaitGui_RecursionGuard(L"Mutex::Acquire"))
 	{
-		ScopedBusyCursor hourglass(Cursor_ReallyBusy);
 		pthread_mutex_lock(&m_mutex);
 	}
 	else
@@ -228,7 +226,6 @@ bool Threading::Mutex::Acquire(const wxTimeSpan& timeout)
 	}
 	else if (_WaitGui_RecursionGuard(L"Mutex::TimedAcquire"))
 	{
-		ScopedBusyCursor hourglass(Cursor_ReallyBusy);
 		return AcquireWithoutYield(timeout);
 	}
 	else
@@ -248,7 +245,7 @@ bool Threading::Mutex::Acquire(const wxTimeSpan& timeout)
 	}
 
 #else
-	return AcquireWithoutYield();
+	return AcquireWithoutYield(timeout);
 #endif
 }
 
@@ -263,6 +260,24 @@ void Threading::Mutex::Wait()
 {
 	Acquire();
 	Release();
+}
+
+// Like wait but spins for a while before sleeping the thread
+void Threading::Mutex::WaitWithSpin()
+{
+	u32 waited = 0;
+	while (true)
+	{
+		if (TryAcquire())
+		{
+			Release();
+			return;
+		}
+		if (waited >= SPIN_TIME_NS)
+			break;
+		waited += ShortSpin();
+	}
+	Wait();
 }
 
 void Threading::Mutex::WaitWithoutYield()

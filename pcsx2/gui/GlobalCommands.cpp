@@ -16,6 +16,7 @@
 #include "PrecompiledHeader.h"
 #include "MainFrame.h"
 #include "GSFrame.h"
+#include "Host.h"
 #include "ApplyState.h"
 #include "ConsoleLogger.h"
 
@@ -34,9 +35,6 @@
 #include "R3000A.h"
 #include "SPU2/spu2.h"
 #include "gui/Dialogs/ModalPopups.h"
-
-// renderswitch - tells GS to go into dx9 sw if "renderswitch" is set.
-bool renderswitch = false;
 
 static bool g_Pcsx2Recording = false; // true if recording video and sound
 
@@ -67,23 +65,20 @@ wxString KeyAcceleratorCode::ToString() const
 		.ToString();
 }
 
-LimiterModeType g_LimiterMode = Limit_Nominal;
-
 namespace Implementations
 {
 	void Frameskip_Toggle()
 	{
 		g_Conf->EmuOptions.GS.FrameSkipEnable = !g_Conf->EmuOptions.GS.FrameSkipEnable;
-		SetGSConfig().FrameSkipEnable = g_Conf->EmuOptions.GS.FrameSkipEnable;
+		EmuConfig.GS.FrameSkipEnable = g_Conf->EmuOptions.GS.FrameSkipEnable;
 
 		if (EmuConfig.GS.FrameSkipEnable)
 		{
-			OSDlog(Color_StrongRed, true, "(FrameSkipping) Enabled.");
-			OSDlog(Color_StrongRed, true, "  FrameDraws=%d, FrameSkips=%d", g_Conf->EmuOptions.GS.FramesToDraw, g_Conf->EmuOptions.GS.FramesToSkip);
+			Host::AddKeyedFormattedOSDMessage("FrameSkipping", 2.0f, "Frameskip ENABLED. FrameDraws=%d, FrameSkips=%d", g_Conf->EmuOptions.GS.FramesToDraw, g_Conf->EmuOptions.GS.FramesToSkip);
 		}
 		else
 		{
-			OSDlog(Color_StrongRed, true, "(FrameSkipping) Disabled.");
+			Host::AddKeyedOSDMessage("FrameSkipping", "Frameskip DISABLED.");
 		}
 	}
 
@@ -94,42 +89,42 @@ namespace Implementations
 		if (!g_Conf->EmuOptions.GS.FrameLimitEnable)
 		{
 			g_Conf->EmuOptions.GS.FrameLimitEnable = true;
-			g_LimiterMode = Limit_Turbo;
-			OSDlog(Color_StrongRed, true, "(FrameLimiter) Turbo + FrameLimit ENABLED.");
-			g_Conf->EmuOptions.GS.FrameSkipEnable = !!g_Conf->Framerate.SkipOnTurbo;
+			g_Conf->EmuOptions.LimiterMode = LimiterModeType::Turbo;
+			Host::AddKeyedOSDMessage("FrameLimiter", "Turbo + Frame limiter ENABLED.");
+			g_Conf->EmuOptions.GS.FrameSkipEnable = !!EmuConfig.Framerate.SkipOnTurbo;
 		}
-		else if (g_LimiterMode == Limit_Turbo)
+		else if (g_Conf->EmuOptions.LimiterMode == LimiterModeType::Turbo)
 		{
-			g_LimiterMode = Limit_Nominal;
+			g_Conf->EmuOptions.LimiterMode = LimiterModeType::Nominal;
 
-			if (g_Conf->Framerate.SkipOnLimit)
+			if (g_Conf->EmuOptions.Framerate.SkipOnLimit)
 			{
-				OSDlog(Color_StrongRed, true, "(FrameLimiter) Turbo DISABLED. Frameskip ENABLED");
+				Host::AddKeyedOSDMessage("FrameLimiter", "Turbo DISABLED.");
+				Host::AddKeyedOSDMessage("FrameSkipping", "Frameskip ENABLED.");
 				g_Conf->EmuOptions.GS.FrameSkipEnable = true;
 			}
 			else
 			{
-				OSDlog(Color_StrongRed, true, "(FrameLimiter) Turbo DISABLED.");
+				Host::AddKeyedOSDMessage("FrameLimiter", "Turbo DISABLED.");
 				g_Conf->EmuOptions.GS.FrameSkipEnable = false;
 			}
 		}
 		else
 		{
-			g_LimiterMode = Limit_Turbo;
+			g_Conf->EmuOptions.LimiterMode = LimiterModeType::Turbo;
 
-			if (g_Conf->Framerate.SkipOnTurbo)
+			if (g_Conf->EmuOptions.Framerate.SkipOnTurbo)
 			{
-				OSDlog(Color_StrongRed, true, "(FrameLimiter) Turbo + Frameskip ENABLED.");
+				Host::AddKeyedOSDMessage("FrameLimiter", "Turbo ENABLED.");
+				Host::AddKeyedOSDMessage("FrameSkipping", "Frameskip ENABLED.");
 				g_Conf->EmuOptions.GS.FrameSkipEnable = true;
 			}
 			else
 			{
-				OSDlog(Color_StrongRed, true, "(FrameLimiter) Turbo ENABLED.");
+				Host::AddKeyedOSDMessage("FrameLimiter", "Turbo ENABLED.");
 				g_Conf->EmuOptions.GS.FrameSkipEnable = false;
 			}
 		}
-
-		gsUpdateFrequency(g_Conf->EmuOptions);
 
 		pauser.AllowResume();
 	}
@@ -143,19 +138,17 @@ namespace Implementations
 		// out a better consistency approach... -air
 
 		ScopedCoreThreadPause pauser;
-		if (g_LimiterMode == Limit_Slomo)
+		if (g_Conf->EmuOptions.LimiterMode == LimiterModeType::Slomo)
 		{
-			g_LimiterMode = Limit_Nominal;
-			OSDlog(Color_StrongRed, true, "(FrameLimiter) SlowMotion DISABLED.");
+			g_Conf->EmuOptions.LimiterMode = LimiterModeType::Nominal;
+			Host::AddKeyedOSDMessage("FrameLimiter", "Slow motion DISABLED.");
 		}
 		else
 		{
-			g_LimiterMode = Limit_Slomo;
-			OSDlog(Color_StrongRed, true, "(FrameLimiter) SlowMotion ENABLED.");
+			g_Conf->EmuOptions.LimiterMode = LimiterModeType::Slomo;
+			Host::AddKeyedOSDMessage("FrameLimiter", "Slow motion ENABLED.");
 			g_Conf->EmuOptions.GS.FrameLimitEnable = true;
 		}
-
-		gsUpdateFrequency(g_Conf->EmuOptions);
 
 		pauser.AllowResume();
 	}
@@ -164,69 +157,77 @@ namespace Implementations
 	{
 		ScopedCoreThreadPause pauser;
 		g_Conf->EmuOptions.GS.FrameLimitEnable = !g_Conf->EmuOptions.GS.FrameLimitEnable;
-		OSDlog(Color_StrongRed, true, "(FrameLimiter) %s.", g_Conf->EmuOptions.GS.FrameLimitEnable ? "ENABLED" : "DISABLED");
+		Host::AddKeyedFormattedOSDMessage("FrameLimiter", 2.0f, "Frame limiter %s.", g_Conf->EmuOptions.GS.FrameLimitEnable ? "ENABLED" : "DISABLED");
 
 		// Turbo/Slowmo don't make sense when framelimiter is toggled
-		g_LimiterMode = Limit_Nominal;
+		g_Conf->EmuOptions.LimiterMode = LimiterModeType::Nominal;
 
 		pauser.AllowResume();
 	}
 
 	void GSwindow_CycleAspectRatio()
 	{
-		AspectRatioType& art = g_Conf->GSWindow.AspectRatio;
+		AspectRatioType& art = EmuConfig.CurrentAspectRatio;
 		const char* arts = "Not modified";
-		if (art == AspectRatio_Stretch && GSGetFMVSwitch()) //avoids a double 4:3 when coming from FMV aspect ratio switch
-			art = AspectRatio_4_3;
 		switch (art)
 		{
-			case AspectRatio_Stretch:
-				art = AspectRatio_4_3;
+			case AspectRatioType::Stretch:
+				art = AspectRatioType::R4_3;
 				arts = "4:3";
 				break;
-			case AspectRatio_4_3:
-				art = AspectRatio_16_9;
+			case AspectRatioType::R4_3:
+				art = AspectRatioType::R16_9;
 				arts = "16:9";
 				break;
-			case AspectRatio_16_9:
-				art = AspectRatio_Stretch;
+			case AspectRatioType::R16_9:
+				art = AspectRatioType::Stretch;
 				arts = "Stretch";
 				break;
 			default:
 				break;
 		}
 
-		OSDlog(Color_StrongBlue, true, "(GSwindow) Aspect ratio: %s", arts);
+		// Sync the mode with the settings. This is kinda silly, since they won't be
+		// saved until shutdown, but it matches the behavior pre-settings-move.
+		g_Conf->EmuOptions.GS.AspectRatio = art;
 
-		// Disable FMV mode if we were previously in it, so the user can override the AR.
-		GSSetFMVSwitch(false);
+		// Prevent GS reopening for the setting change.
+		EmuConfig.GS.AspectRatio = art;
+
+		Host::AddKeyedFormattedOSDMessage("AspectRatio", 2.0f, "Aspect ratio: %s", arts);
 	}
 
+	// NOTE: The settings below are super janky and race the GS thread when updating.
+	// But because they don't go through the proper settings update procedure, it's necessary to avoid reopening GS.
 	void SetOffset(float x, float y)
 	{
-		g_Conf->GSWindow.OffsetX = x;
-		g_Conf->GSWindow.OffsetY = y;
-		OSDlog(Color_StrongBlue, true, "(GSwindow) Offset: x=%f, y=%f", x, y);
+		g_Conf->EmuOptions.GS.OffsetX = x;
+		g_Conf->EmuOptions.GS.OffsetY = y;
+		EmuConfig.GS.OffsetX = x;
+		EmuConfig.GS.OffsetY = y;
+		GSConfig.OffsetX = x;
+		GSConfig.OffsetY = y;
+		Host::AddKeyedFormattedOSDMessage("WindowOffset", 2.0f, "Offset: x=%f, y=%f", x, y);
 	}
 
 	void GSwindow_OffsetYplus()
 	{
-		SetOffset(g_Conf->GSWindow.OffsetX, g_Conf->GSWindow.OffsetY + 1);
+		SetOffset(EmuConfig.GS.OffsetX, EmuConfig.GS.OffsetY + 1);
 	}
 
 	void GSwindow_OffsetYminus()
 	{
-		SetOffset(g_Conf->GSWindow.OffsetX, g_Conf->GSWindow.OffsetY - 1);
+		SetOffset(EmuConfig.GS.OffsetX, EmuConfig.GS.OffsetY - 1);
 	}
 
 	void GSwindow_OffsetXplus()
 	{
-		SetOffset(g_Conf->GSWindow.OffsetX + 1, g_Conf->GSWindow.OffsetY);
+		SetOffset(EmuConfig.GS.OffsetX + 1, EmuConfig.GS.OffsetY);
 	}
 
 	void GSwindow_OffsetXminus()
 	{
-		SetOffset(g_Conf->GSWindow.OffsetX - 1, g_Conf->GSWindow.OffsetY);
+		SetOffset(EmuConfig.GS.OffsetX - 1, EmuConfig.GS.OffsetY);
 	}
 
 	void GSwindow_OffsetReset()
@@ -238,17 +239,19 @@ namespace Implementations
 	{
 		if (zoom <= 0)
 			return;
-		g_Conf->GSWindow.StretchY = zoom;
-		OSDlog(Color_StrongBlue, true, "(GSwindow) Vertical stretch: %f", zoom);
+		g_Conf->EmuOptions.GS.StretchY = zoom;
+		EmuConfig.GS.StretchY = zoom;
+		GSConfig.StretchY = zoom;
+		Host::AddKeyedFormattedOSDMessage("WindowVStretch", 2.0f, "Vertical stretch: %f", zoom);
 	}
 
 	void GSwindow_ZoomInY()
 	{
-		SetZoomY(g_Conf->GSWindow.StretchY + 1);
+		SetZoomY(EmuConfig.GS.StretchY + 1);
 	}
 	void GSwindow_ZoomOutY()
 	{
-		SetZoomY(g_Conf->GSWindow.StretchY - 1);
+		SetZoomY(EmuConfig.GS.StretchY - 1);
 	}
 	void GSwindow_ZoomResetY()
 	{
@@ -259,18 +262,20 @@ namespace Implementations
 	{
 		if (zoom < 0)
 			return;
-		g_Conf->GSWindow.Zoom = zoom;
+		g_Conf->EmuOptions.GS.Zoom = zoom;
+		EmuConfig.GS.Zoom = zoom;
+		GSConfig.Zoom = zoom;
 
 		if (zoom == 0)
-			OSDlog(Color_StrongBlue, true, "(GSwindow) Zoom: 0 (auto, no black bars)");
+			Host::AddKeyedOSDMessage("WindowZoom", "Zoom: 0 (auto, no black bars)");
 		else
-			OSDlog(Color_StrongBlue, true, "(GSwindow) Zoom: %f", zoom);
+			Host::AddKeyedFormattedOSDMessage("WindowZoom", 2.0f, "Zoom: %f", zoom);
 	}
 
 
 	void GSwindow_ZoomIn()
 	{
-		float z = g_Conf->GSWindow.Zoom;
+		float z = EmuConfig.GS.Zoom;
 		if (z == 0)
 			z = 100;
 		z++;
@@ -278,7 +283,7 @@ namespace Implementations
 	}
 	void GSwindow_ZoomOut()
 	{
-		float z = g_Conf->GSWindow.Zoom;
+		float z = EmuConfig.GS.Zoom;
 		if (z == 0)
 			z = 100;
 		z--;
@@ -286,7 +291,7 @@ namespace Implementations
 	}
 	void GSwindow_ZoomToggle()
 	{
-		float z = g_Conf->GSWindow.Zoom;
+		float z = EmuConfig.GS.Zoom;
 		if (z == 100)
 			z = 0;
 		else
@@ -386,15 +391,7 @@ namespace Implementations
 		{
 			reentrant = true;
 			ScopedCoreThreadPause paused_core;
-			freezeData fP = {0, nullptr};
-			MTGS_FreezeData sstate = {&fP, 0};
-			GetMTGS().Freeze(FreezeAction::Size, sstate);
-			fP.data = new u8[fP.size];
-			GetMTGS().Freeze(FreezeAction::Save, sstate);
-			GetMTGS().Suspend(true);
-			renderswitch = !renderswitch;
-			GetMTGS().Freeze(FreezeAction::Load, sstate);
-			delete[] fP.data;
+			GetMTGS().ToggleSoftwareRendering();
 			paused_core.AllowResume();
 			reentrant = false;
 		}
@@ -408,36 +405,10 @@ namespace Implementations
 
 		// FIXME: Some of the trace logs will require recompiler resets to be activated properly.
 #ifdef PCSX2_DEVBUILD
-		SetTraceConfig().Enabled = !EmuConfig.Trace.Enabled;
-		Console.WriteLn(EmuConfig.Trace.Enabled ? "Logging Enabled." : "Logging Disabled.");
-#endif
-	}
-
-	void Sys_FreezeGS()
-	{
-		// fixme : fix up gsstate mess and make it mtgs compatible -- air
-#ifdef _STGS_GSSTATE_CODE
-		wxString Text;
-		if (strgametitle[0] != 0)
-		{
-			// only take the first two words
-			wxString gsText;
-
-			wxStringTokenizer parts(strgametitle, L" ");
-
-			wxString name(parts.GetNextToken()); // first part
-			wxString part2(parts.GetNextToken());
-
-			if (!!part2)
-				name += L"_" + part2;
-
-			gsText.Printf(L"%s.%d.gs", WX_STR(name), StatesC);
-			Text = Path::Combine(g_Conf->Folders.Savestates, gsText);
-		}
-		else
-		{
-			Text = GetGSStateFilename();
-		}
+		// This is touching the CPU thread's settings, it really shouldn't be, but it'll desync with the UI if we don't.
+		g_Conf->EmuOptions.Trace.Enabled = !g_Conf->EmuOptions.Trace.Enabled;
+		EmuConfig.Trace.Enabled = g_Conf->EmuOptions.Trace.Enabled;
+		Console.WriteLn(g_Conf->EmuOptions.Trace.Enabled ? "Logging Enabled." : "Logging Disabled.");
 #endif
 	}
 
@@ -802,13 +773,6 @@ static const GlobalCommandDescriptor CommandDeclarations[] =
 			false,
 		},
 
-		{
-			"Sys_FreezeGS",
-			Implementations::Sys_FreezeGS,
-			NULL,
-			NULL,
-			false,
-		},
 		{
 			"Sys_RecordingToggle",
 			Implementations::Sys_RecordingToggle,

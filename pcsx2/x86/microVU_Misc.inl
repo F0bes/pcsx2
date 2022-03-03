@@ -229,13 +229,6 @@ static void __fc mVUEBit()
 	vu1Thread.mtvuInterrupts.fetch_or(VU_Thread::InterruptFlagVUEBit, std::memory_order_release);
 }
 
-static inline u32 branchAddrN(const mV)
-{
-	pxAssumeDev(islowerOP, "MicroVU: Expected Lower OP code for valid branch addr.");
-	return ((((iPC + 4) + (_Imm11_ * 2)) & mVU.progMemMask) * 4);
-}
-
-
 static inline u32 branchAddr(const mV)
 {
 	pxAssumeDev(islowerOP, "MicroVU: Expected Lower OP code for valid branch addr.");
@@ -294,7 +287,7 @@ struct SSEMasks
 	u32 MIN_MAX_1[4], MIN_MAX_2[4], ADD_SS[4];
 };
 
-static const __aligned16 SSEMasks sseMasks =
+alignas(16) static const SSEMasks sseMasks =
 {
 	{0xffffffff, 0x80000000, 0xffffffff, 0x80000000},
 	{0x00000000, 0x40000000, 0x00000000, 0x40000000},
@@ -534,7 +527,7 @@ void SSE_DIVSS(mV, const xmm& to, const xmm& from, const xmm& t1 = xEmptyReg, co
 // Micro VU - Custom Quick Search
 //------------------------------------------------------------------
 
-__pagealigned u8 mVUsearchXMM[__pagesize];
+alignas(__pagesize) u8 mVUsearchXMM[__pagesize];
 
 // Generates a custom optimized block-search function
 // Note: Structs must be 16-byte aligned! (GCC doesn't guarantee this)

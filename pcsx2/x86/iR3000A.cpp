@@ -35,7 +35,7 @@
 #include "IopCommon.h"
 #include "iCore.h"
 
-#include "gui/AppConfig.h"
+#include "Config.h"
 
 #include "common/Perf.h"
 #include "DebugTools/Breakpoints.h"
@@ -105,7 +105,7 @@ static u32 psxdump = 0;
 static void __fastcall iopRecRecompile(const u32 startpc);
 
 // Recompiled code buffer for EE recompiler dispatchers!
-static u8 __pagealigned iopRecDispatchers[__pagesize];
+alignas(__pagesize) static u8 iopRecDispatchers[__pagesize];
 
 typedef void DynGenFunc();
 
@@ -229,9 +229,9 @@ static void iIopDumpBlock(int startpc, u8* ptr)
 	int numused, count;
 
 	Console.WriteLn("dump1 %x:%x, %x", startpc, psxpc, psxRegs.cycle);
-	g_Conf->Folders.Logs.Mkdir();
+	EmuFolders::Logs.Mkdir();
 
-	wxString filename(Path::Combine(g_Conf->Folders.Logs, wxsFormat(L"psxdump%.8X.txt", startpc)));
+	wxString filename(Path::Combine(EmuFolders::Logs, wxsFormat(L"psxdump%.8X.txt", startpc)));
 	AsciiFile f(filename, L"w");
 
 	f.Printf("Dump PSX register data: 0x%x\n\n", (uptr)&psxRegs);
@@ -246,7 +246,7 @@ static void iIopDumpBlock(int startpc, u8* ptr)
 
 	memzero(used);
 	numused = 0;
-	for (i = 0; i < ArraySize(s_pInstCache->regs); ++i)
+	for (i = 0; i < std::size(s_pInstCache->regs); ++i)
 	{
 		if (s_pInstCache->regs[i] & EEINST_USED)
 		{
@@ -256,7 +256,7 @@ static void iIopDumpBlock(int startpc, u8* ptr)
 	}
 
 	f.Printf("       ");
-	for (i = 0; i < ArraySize(s_pInstCache->regs); ++i)
+	for (i = 0; i < std::size(s_pInstCache->regs); ++i)
 	{
 		if (used[i])
 			f.Printf("%2d ", i);
@@ -264,7 +264,7 @@ static void iIopDumpBlock(int startpc, u8* ptr)
 	f.Printf("\n");
 
 	f.Printf("       ");
-	for (i = 0; i < ArraySize(s_pInstCache->regs); ++i)
+	for (i = 0; i < std::size(s_pInstCache->regs); ++i)
 	{
 		if (used[i])
 			f.Printf("%s ", disRNameGPR[i]);
@@ -277,7 +277,7 @@ static void iIopDumpBlock(int startpc, u8* ptr)
 		f.Printf("%2d: %2.2x ", i + 1, pcur->info);
 
 		count = 1;
-		for (j = 0; j < ArraySize(s_pInstCache->regs); j++)
+		for (j = 0; j < std::size(s_pInstCache->regs); j++)
 		{
 			if (used[j])
 			{
@@ -574,7 +574,12 @@ static void psxRecompileIrxImport()
 
 	if (SysTraceActive(IOP.Bios))
 	{
-		xPUSH((uptr)funcname);
+		#ifdef __M_X86_64
+			xMOV64(arg3reg, (uptr)funcname);
+		#else
+			xPUSH((uptr)funcname);
+		#endif
+
 		xFastCall((void*)irxImportLog_rec, import_table, index);
 	}
 
@@ -1122,7 +1127,9 @@ void psxDynarecCheckBreakpoint()
 		return;
 
 	CBreakPoints::SetBreakpointTriggered(true);
+#ifndef PCSX2_CORE
 	GetCoreThread().PauseSelfDebug();
+#endif
 	iopBreakpoint = true;
 }
 
@@ -1133,7 +1140,9 @@ void psxDynarecMemcheck()
 		return;
 
 	CBreakPoints::SetBreakpointTriggered(true);
+#ifndef PCSX2_CORE
 	GetCoreThread().PauseSelfDebug();
+#endif
 	iopBreakpoint = true;
 }
 
@@ -1153,12 +1162,8 @@ void psxRecMemcheck(u32 op, u32 bits, bool store)
 	_psxMoveGPRtoR(ecx, (op >> 21) & 0x1F);
 	if ((s16)op != 0)
 		xADD(ecx, (s16)op);
-	if (bits == 128)
-		xAND(ecx, ~0x0F);
 
-	xFastCall((void*)standardizeBreakpointAddressIop, ecx);
-	xMOV(ecx, eax);
-	xMOV(edx, eax);
+	xMOV(edx, ecx);
 	xADD(edx, bits / 8);
 
 	// ecx = access address
@@ -1178,11 +1183,11 @@ void psxRecMemcheck(u32 op, u32 bits, bool store)
 
 		// logic: memAddress < bpEnd && bpStart < memAddress+memSize
 
-		xMOV(eax, standardizeBreakpointAddress(BREAKPOINT_IOP, checks[i].end));
+		xMOV(eax, checks[i].end);
 		xCMP(ecx, eax);     // address < end
 		xForwardJGE8 next1; // if address >= end then goto next1
 
-		xMOV(eax, standardizeBreakpointAddress(BREAKPOINT_IOP, checks[i].start));
+		xMOV(eax, checks[i].start);
 		xCMP(eax, edx);     // start < address+size
 		xForwardJGE8 next2; // if start >= address+size then goto next2
 
@@ -1233,7 +1238,6 @@ void psxEncodeMemcheck()
 		case MEMTYPE_HALF:  psxRecMemcheck(op,  16, store); break;
 		case MEMTYPE_WORD:  psxRecMemcheck(op,  32, store); break;
 		case MEMTYPE_DWORD: psxRecMemcheck(op,  64, store); break;
-		case MEMTYPE_QWORD: psxRecMemcheck(op, 128, store); break;
 	}
 }
 
@@ -1300,7 +1304,7 @@ static void __fastcall iopRecRecompile(const u32 startpc)
 	u32 willbranch3 = 0;
 
 	// Inject IRX hack
-	if (startpc == 0x1630 && g_Conf->CurrentIRX.Length() > 3)
+	if (startpc == 0x1630 && EmuConfig.CurrentIRX.length() > 3)
 	{
 		if (iopMemRead32(0x20018) == 0x1F)
 		{
@@ -1470,9 +1474,9 @@ StartRecomp:
 	// dump code
 	if (IsDebugBuild)
 	{
-		for (i = 0; i < ArraySize(s_psxrecblocks); ++i)
+		for (u32 recblock : s_psxrecblocks)
 		{
-			if (startpc == s_psxrecblocks[i])
+			if (startpc == recblock)
 			{
 				iIopDumpBlock(startpc, recPtr);
 			}

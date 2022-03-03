@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <map>
+
 class CRC
 {
 public:
@@ -27,11 +29,10 @@ public:
 		ApeEscape2,
 		ArTonelico2,
 		Barnyard,
+		BeyondGoodAndEvil,
 		BigMuthaTruckers,
 		BrianLaraInternationalCricket,
-		BurnoutDominator,
-		BurnoutRevenge,
-		BurnoutTakedown,
+		BurnoutGames,
 		Clannad,
 		CrashBandicootWoC,
 		DarkCloud,
@@ -40,6 +41,7 @@ public:
 		DeathByDegreesTekkenNinaWilliams,
 		DestroyAllHumans,
 		DestroyAllHumans2,
+		DrivingEmotionTypeS,
 		DuelSaviorDestiny,
 		EvangelionJo,
 		FFX,
@@ -49,15 +51,11 @@ public:
 		FIFA04,
 		FIFA05,
 		FightingBeautyWulong,
-		GetaWay,
-		GetaWayBlackMonday,
+		GetawayGames,
 		GiTS,
 		GodHand,
 		GodOfWar,
 		GodOfWar2,
-		GT3,
-		GT4,
-		GTConcept,
 		HarleyDavidson,
 		HarryPotterATCOS,
 		HarryPotterATGOF,
@@ -67,18 +65,18 @@ public:
 		HauntingGround,
 		ICO,
 		IkkiTousen,
-		JackieChanAdv,
+		IndianaJonesAndTheEmperorsTomb,
 		Jak1,
 		Jak2,
 		Jak3,
 		JakX,
+		JurassicPark,
 		KazokuKeikakuKokoroNoKizuna,
 		KnightsOfTheTemple2,
 		Kunoichi,
 		KyuuketsuKitanMoonties,
 		Lamune,
 		LegacyOfKainDefiance,
-		LordOfTheRingsThirdAge,
 		MajokkoALaMode2,
 		Manhunt2,
 		MetalSlug6,
@@ -86,11 +84,12 @@ public:
 		NicktoonsUnite,
 		Okami,
 		Oneechanbara2Special,
+		OneTwentyYenStories,
 		Persona3,
 		PiaCarroteYoukosoGPGakuenPrincess,
+		PolyphonyDigitalGames,
 		ProjectSnowblind,
 		Quake3Revolution,
-		RadiataStories,
 		RatchetAndClank,
 		RatchetAndClank2,
 		RatchetAndClank3,
@@ -109,37 +108,33 @@ public:
 		Shox,
 		Simple2000Vol114,
 		SkyGunner,
+		SlamTennis,
 		SMTNocturne,
 		SonicUnleashed,
 		SoTC,
 		SoulReaver2,
 		Spartan,
-		StarOcean3,
 		SteambotChronicles,
+		SSX3,
 		SuperManReturns,
 		SVCChaos,
 		TalesOfAbyss,
 		TalesOfLegendia,
 		TalesofSymphonia,
 		Tekken5,
-		TenchuFS,
-		TenchuWoH,
 		TheIncredibleHulkUD,
 		TombRaiderAnniversary,
 		TombRaiderLegend,
 		TombRaiderUnderworld,
+		TriAceGames,
 		TribesAerialAssault,
 		TomoyoAfter,
-		TouristTrophy,
 		UltramanFightingEvolution,
 		UrbanReign,
-		ValkyrieProfile2,
 		Whiplash,
 		WildArms4,
-		WildArms5,
 		XenosagaE3,
-		Yakuza,
-		Yakuza2,
+		YakuzaGames,
 		ZettaiZetsumeiToshi2,
 		TitleCount,
 	};
@@ -169,16 +164,16 @@ public:
 
 	struct Game
 	{
-		uint32 crc;
+		u32 crc;
 		Title title;
 		Region region;
-		uint32 flags;
+		u32 flags;
 	};
 
 private:
-	static Game m_games[];
-	static std::map<uint32, Game*> m_map;
+	static const Game m_games[];
+	static std::map<u32, const Game*> m_map;
 
 public:
-	static Game Lookup(uint32 crc);
+	static const Game& Lookup(u32 crc);
 };

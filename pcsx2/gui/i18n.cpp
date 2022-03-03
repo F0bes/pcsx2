@@ -336,7 +336,7 @@ bool i18n_SetLanguage( wxLanguage wxLangId, const wxString& langCode )
 	};
 	
 	bool foundone = false;
-	for (uint i=0; i<ArraySize(dictFiles); ++i)
+	for (uint i=0; i<std::size(dictFiles); ++i)
 	{
 		if (!dictFiles[i]) continue;
 
@@ -359,11 +359,5 @@ bool i18n_SetLanguage( wxLanguage wxLangId, const wxString& langCode )
 // This method sets the lookup path to search l10n files
 void i18n_SetLanguagePath()
 {
-	// default location for windows
-	wxLocale::AddCatalogLookupPathPrefix( wxGetCwd() );
-	// additional location for linux
-#if defined(__unix__) || defined(__APPLE__)
-	wxLocale::AddCatalogLookupPathPrefix( PathDefs::GetLangs().ToString() );
-#endif
-
+	wxLocale::AddCatalogLookupPathPrefix(PathDefs::GetLangs().ToString());
 }

@@ -31,7 +31,7 @@ enum class FreezeAction
 //  the lower 16 bit value.  IF the change is breaking of all compatibility with old
 //  states, increment the upper 16 bit value, and clear the lower 16 bits to 0.
 
-static const u32 g_SaveVersion = (0x9A24 << 16) | 0x0000;
+static const u32 g_SaveVersion = (0x9A2C << 16) | 0x0000;
 
 // the freezing data between submodules and core
 // an interesting thing to note is that this dates back from before plugin
@@ -45,9 +45,21 @@ struct freezeData
     u8 *data;
 };
 
-// this function is meant to be used in the place of GSfreeze, and provides a safe layer
-// between the GS saving function and the MTGS's needs. :)
-extern s32 CALLBACK gsSafeFreeze( int mode, freezeData *data );
+struct SaveStateScreenshotData
+{
+	u32 width;
+	u32 height;
+	std::vector<u32> pixels;
+};
+
+class ArchiveEntryList;
+
+// Wrappers to generate a save state compatible across all frontends.
+// These functions assume that the caller has paused the core thread.
+extern void SaveState_DownloadState(ArchiveEntryList* destlist);
+extern std::unique_ptr<SaveStateScreenshotData> SaveState_SaveScreenshot();
+extern void SaveState_ZipToDisk(ArchiveEntryList* srclist, std::unique_ptr<SaveStateScreenshotData> screenshot, const wxString& filename, s32 slot_for_message);
+extern void SaveState_UnzipFromDisk(const wxString& filename);
 
 // --------------------------------------------------------------------------------------
 //  SaveStateBase class
@@ -70,7 +82,9 @@ public:
 	SaveStateBase( VmStateBuffer* memblock );
 	virtual ~SaveStateBase() { }
 
-	static wxString GetFilename( int slot );
+#ifndef PCSX2_CORE
+	static wxString GetSavestateFolder( int slot, bool isSavingOrLoading = false );
+#endif
 
 	// Gets the version of savestate that this object is acting on.
 	// The version refers to the low 16 bits only (high 16 bits classifies Pcsx2 build types)
@@ -148,6 +162,7 @@ protected:
 	void mtvuFreeze();
 	void rcntFreeze();
 	void vuMicroFreeze();
+	void vuJITFreeze();
 	void vif0Freeze();
 	void vif1Freeze();
 	void sifFreeze();
@@ -173,6 +188,124 @@ protected:
 	// internal emulation frame count than what it was at the beginning of the
 	// original recording
 	void InputRecordingFreeze();
+};
+
+// --------------------------------------------------------------------------------------
+//  ArchiveEntry
+// --------------------------------------------------------------------------------------
+class ArchiveEntry
+{
+protected:
+	wxString	m_filename;
+	uptr		m_dataidx;
+	size_t		m_datasize;
+
+public:
+	ArchiveEntry(const wxString& filename = wxEmptyString)
+		: m_filename(filename)
+	{
+		m_dataidx = 0;
+		m_datasize = 0;
+	}
+
+	virtual ~ArchiveEntry() = default;
+
+	ArchiveEntry& SetDataIndex(uptr idx)
+	{
+		m_dataidx = idx;
+		return *this;
+	}
+
+	ArchiveEntry& SetDataSize(size_t size)
+	{
+		m_datasize = size;
+		return *this;
+	}
+
+	wxString GetFilename() const
+	{
+		return m_filename;
+	}
+
+	uptr GetDataIndex() const
+	{
+		return m_dataidx;
+	}
+
+	uint GetDataSize() const
+	{
+		return m_datasize;
+	}
+};
+
+typedef SafeArray< u8 > ArchiveDataBuffer;
+
+// --------------------------------------------------------------------------------------
+//  ArchiveEntryList
+// --------------------------------------------------------------------------------------
+class ArchiveEntryList
+{
+	DeclareNoncopyableObject(ArchiveEntryList);
+
+protected:
+	std::vector<ArchiveEntry> m_list;
+	std::unique_ptr<ArchiveDataBuffer> m_data;
+
+public:
+	virtual ~ArchiveEntryList() = default;
+
+	ArchiveEntryList() {}
+
+	ArchiveEntryList(ArchiveDataBuffer* data)
+		: m_data(data)
+	{
+	}
+
+	ArchiveEntryList(ArchiveDataBuffer& data)
+		: m_data(&data)
+	{
+	}
+
+	const VmStateBuffer* GetBuffer() const
+	{
+		return m_data.get();
+	}
+
+	VmStateBuffer* GetBuffer()
+	{
+		return m_data.get();
+	}
+
+	u8* GetPtr(uint idx)
+	{
+		return &(*m_data)[idx];
+	}
+
+	const u8* GetPtr(uint idx) const
+	{
+		return &(*m_data)[idx];
+	}
+
+	ArchiveEntryList& Add(const ArchiveEntry& src)
+	{
+		m_list.push_back(src);
+		return *this;
+	}
+
+	size_t GetLength() const
+	{
+		return m_list.size();
+	}
+
+	ArchiveEntry& operator[](uint idx)
+	{
+		return m_list[idx];
+	}
+
+	const ArchiveEntry& operator[](uint idx) const
+	{
+		return m_list[idx];
+	}
 };
 
 // --------------------------------------------------------------------------------------
@@ -226,3 +359,4 @@ namespace Exception
 	};
 }; // namespace Exception
 
+extern wxString GetSavestateFolder( int slot );
