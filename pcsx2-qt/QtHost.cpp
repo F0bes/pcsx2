@@ -63,6 +63,10 @@
 #include "QtUtils.h"
 #include "svnrev.h"
 
+#ifdef _WIN32
+#include <Psapi.h>
+#endif
+
 #ifdef ENABLE_ACHIEVEMENTS
 #include "Frontend/Achievements.h"
 #endif
@@ -1789,6 +1793,39 @@ static bool PerformEarlyHardwareChecks()
 
 #endif
 
+#ifdef WIN32
+
+static void PerformLoadedModulesCheck()
+{
+	HANDLE hProcess = GetCurrentProcess();
+
+	if (hProcess == NULL)
+		return;
+
+	HMODULE hModules[1024];
+	DWORD cbNeeded;
+
+	if (EnumProcessModules(hProcess, hModules, sizeof(hModules), &cbNeeded))
+	{
+		for (DWORD i = 0; i < (cbNeeded / sizeof(HMODULE)); i++)
+		{
+			TCHAR szModName[MAX_PATH];
+
+			if (GetModuleFileNameEx(hProcess, hModules[i], szModName,
+					sizeof(szModName) / sizeof(TCHAR)))
+			{
+				std::basic_string<TCHAR> name = szModName;
+				if (name.find(L"ebehmoni.dll") != std::string::npos)
+				{
+					Console.Warning("ESET HIPS module is loaded. Please disable if memory allocation errors occur!\n", szModName);
+				}
+			}
+		}
+	}
+}
+
+#endif
+
 static void RegisterTypes()
 {
 	qRegisterMetaType<std::optional<bool>>();
@@ -1843,6 +1880,10 @@ int main(int argc, char* argv[])
 	// Start up the CPU thread.
 	QtHost::HookSignals();
 	EmuThread::start();
+
+#ifdef _WIN32
+	PerformLoadedModulesCheck();
+#endif
 
 	// Create all window objects, the emuthread might still be starting up at this point.
 	main_window->initialize();
