@@ -125,6 +125,11 @@ static bool LoadBiosVersion(std::FILE* fp, u32& version, std::string& descriptio
 			char vermaj[3] = {romver[0], romver[1], 0};
 			char vermin[3] = {romver[2], romver[3], 0};
 
+#if !defined(PCSX2_DEBUG) && !defined(PCSX2_DEVBUILD)
+			if (romver[5] == 'D')
+				return false;
+#endif
+
 			description = StringUtil::StdStringFromFormat("%-7s v%s.%s(%c%c/%c%c/%c%c%c%c)  %s",
 				zone.c_str(),
 				vermaj, vermin,
