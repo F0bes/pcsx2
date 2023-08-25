@@ -49,6 +49,7 @@
     <ClCompile Include="Assertions.cpp" />
     <ClCompile Include="Console.cpp" />
     <ClCompile Include="CrashHandler.cpp" />
+    <ClCompile Include="DetourWrapper.cpp" />
     <ClCompile Include="DynamicLibrary.cpp" />
     <ClCompile Include="Error.cpp" />
     <ClCompile Include="FastJmp.cpp">
@@ -107,6 +108,7 @@
     <ClInclude Include="AlignedMalloc.h" />
     <ClInclude Include="ByteSwap.h" />
     <ClInclude Include="CrashHandler.h" />
+    <ClInclude Include="DetourWrapper.h" />
     <ClInclude Include="DynamicLibrary.h" />
     <ClInclude Include="Easing.h" />
     <ClInclude Include="boost_spsc_queue.hpp" />

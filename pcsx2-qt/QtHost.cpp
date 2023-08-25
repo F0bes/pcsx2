@@ -47,6 +47,7 @@
 #include "common/Assertions.h"
 #include "common/Console.h"
 #include "common/CrashHandler.h"
+#include "common/DetourWrapper.h"
 #include "common/FileSystem.h"
 #include "common/Path.h"
 #include "common/SettingsWrapper.h"
@@ -1805,6 +1806,11 @@ bool QtHost::RunSetupWizard()
 int main(int argc, char* argv[])
 {
 	CrashHandler::Install();
+
+
+#ifdef _WIN32
+	DetourWrapper::Install();
+#endif
 
 	QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 	QtHost::RegisterTypes();

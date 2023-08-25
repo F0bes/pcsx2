@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(SolutionDir)common\vsprops\BaseProjectConfig.props" />
+  <Import Project="$(SolutionDir)common\vsprops\WinSDK.props" />
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{37489709-8054-4903-9C49-A79846049FC9}</ProjectGuid>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset Condition="!$(Configuration.Contains(Clang))">$(DefaultPlatformToolset)</PlatformToolset>
+    <PlatformToolset Condition="$(Configuration.Contains(Clang))">ClangCL</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+    <WholeProgramOptimization Condition="$(Configuration.Contains(Release))">true</WholeProgramOptimization>
+    <UseDebugLibraries Condition="$(Configuration.Contains(Debug))">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="!$(Configuration.Contains(Debug))">false</UseDebugLibraries>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="..\DefaultProjectRootDir.props" />
+    <Import Project="..\3rdparty.props" />
+    <Import Condition="$(Configuration.Contains(Debug))" Project="..\..\common\vsprops\CodeGen_Debug.props" />
+    <Import Condition="$(Configuration.Contains(Devel))" Project="..\..\common\vsprops\CodeGen_Devel.props" />
+    <Import Condition="$(Configuration.Contains(Release))" Project="..\..\common\vsprops\CodeGen_Release.props" />
+    <Import Condition="!$(Configuration.Contains(Release))" Project="..\..\common\vsprops\IncrementalLinking.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+  <ItemGroup>
+    <ClInclude Include="src\detours.h" />
+    <ClInclude Include="src\detver.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\creatwth.cpp" />
+    <ClCompile Include="src\detours.cpp" />
+    <ClCompile Include="src\disasm.cpp" />
+    <ClCompile Include="src\disolarm.cpp" />
+    <ClCompile Include="src\disolarm64.cpp" />
+    <ClCompile Include="src\disolia64.cpp" />
+    <ClCompile Include="src\disolx64.cpp" />
+    <ClCompile Include="src\disolx86.cpp" />
+    <ClCompile Include="src\image.cpp" />
+    <ClCompile Include="src\modules.cpp" />
+  </ItemGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <AdditionalIncludeDirectories>$(SolutionDir)3rdparty\rapidjson\include;$(ProjectDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

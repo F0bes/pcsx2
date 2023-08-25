@@ -43,6 +43,7 @@
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\demangler\include</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\rapidyaml\rapidyaml\ext\c4core\src\c4\ext\fast_float\include;%(AdditionalIncludeDirectories);</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\sdl2\include;$(SolutionDir)3rdparty\sdl2\SDL\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\detours\src</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)pcsx2</AdditionalIncludeDirectories>
       <!-- Needed for moc pch -->
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(ProjectDir)\Settings;$(ProjectDir)\GameList;$(ProjectDir)\Tools\InputRecording;$(ProjectDir)\Debugger;$(ProjectDir)\Debugger\Models</AdditionalIncludeDirectories>
@@ -75,6 +76,9 @@
     </ProjectReference>
     <ProjectReference Include="..\3rdparty\demangler\demangler.vcxproj">
       <Project>{1e3d706c-1d95-4e1b-bdf2-ca3d0007df7f}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\3rdparty\detours\detours.vcxproj">
+      <Project>{37489709-8054-4903-9C49-A79846049FC9}</Project>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
