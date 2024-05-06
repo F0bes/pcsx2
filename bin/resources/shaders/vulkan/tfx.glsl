@@ -349,7 +349,7 @@ layout(set = 1, binding = 1) uniform texture2D Palette;
 #endif
 
 #if PS_FEEDBACK_LOOP_IS_NEEDED
-	#if defined(DISABLE_TEXTURE_BARRIER) || defined(HAS_FEEDBACK_LOOP_LAYOUT)
+	#if defined(DISABLE_TEXTURE_BARRIER)
 		layout(set = 1, binding = 2) uniform texture2D RtSampler;
 		vec4 sample_from_rt() { return texelFetch(RtSampler, ivec2(gl_FragCoord.xy), 0); }
 	#else
@@ -532,7 +532,7 @@ uvec4 sample_4_index(vec4 uv)
 	// Denormalize value
 			
 #if PS_RTA_SRC_CORRECTION
-	uvec4 i = uvec4(c * 128.55f);
+	uvec4 i = uvec4(round(c * 128.25f));
 #else
 	uvec4 i = uvec4(c * 255.5f);
 #endif
@@ -1200,6 +1200,9 @@ void ps_blend(inout vec4 Color, inout vec4 As_rgba)
 			float max_color = max(max(Color.r, Color.g), Color.b);
 			float color_compensate = 255.0f / max(128.0f, max_color);
 			Color.rgb *= vec3(color_compensate);
+		#elif PS_BLEND_HW == 4
+			// Needed for Cd * (1 - Ad)
+			Color.rgb = vec3(128.0f);
 		#endif
 	#endif
 }

@@ -7,6 +7,10 @@ if [ "$#" -ne 1 ]; then
     exit 1
 fi
 
+# The bundled ffmpeg has a lot of things disabled to reduce code size.
+# Users may want to use system ffmpeg for additional features
+: ${BUILD_FFMPEG:=1}
+
 export MACOSX_DEPLOYMENT_TARGET=11.0
 
 NPROCS="$(getconf _NPROCESSORS_ONLN)"
@@ -18,7 +22,7 @@ fi
 
 FREETYPE=2.13.2
 HARFBUZZ=8.3.1
-SDL=SDL2-2.30.2
+SDL=SDL2-2.30.3
 ZSTD=1.5.5
 LZ4=b8fd2d15309dd4e605070bd4486e26b6ef814e29
 LIBPNG=1.6.43
@@ -42,6 +46,7 @@ export CFLAGS="-I$INSTALLDIR/include $CFLAGS"
 export CXXFLAGS="-I$INSTALLDIR/include $CXXFLAGS"
 CMAKE_COMMON=(
 	-DCMAKE_BUILD_TYPE=Release
+	-DCMAKE_SHARED_LINKER_FLAGS="-dead_strip -dead_strip_dylibs"
 	-DCMAKE_PREFIX_PATH="$INSTALLDIR"
 	-DCMAKE_INSTALL_PREFIX="$INSTALLDIR"
 	-DCMAKE_OSX_ARCHITECTURES="x86_64"
@@ -51,7 +56,7 @@ CMAKE_COMMON=(
 cat > SHASUMS <<EOF
 12991c4e55c506dd7f9b765933e62fd2be2e06d421505d7950a132e4f1bb484d  freetype-$FREETYPE.tar.xz
 19a54fe9596f7a47c502549fce8e8a10978c697203774008cc173f8360b19a9a  harfbuzz-$HARFBUZZ.tar.gz
-891d66ac8cae51361d3229e3336ebec1c407a8a2a063b61df14f5fdf3ab5ac31  $SDL.tar.gz
+820440072f8f5b50188c1dae104f2ad25984de268785be40c41a099a510f0aec  $SDL.tar.gz
 9c4396cc829cfae319a6e2615202e82aad41372073482fce286fac78646d3ee4  zstd-$ZSTD.tar.gz
 0728800155f3ed0a0c87e03addbd30ecbe374f7b080678bbca1506051d50dec3  $LZ4.tar.gz
 6a5ca0652392a2d7c9db2ae5b40210843c0bbc081cbd410825ab00cc59f14a6c  libpng-$LIBPNG.tar.xz
@@ -102,22 +107,24 @@ make -C build "-j$NPROCS"
 make -C build install
 cd ..
 
-echo "Installing FFmpeg..."
-rm -fr "ffmpeg-$FFMPEG"
-tar xf "ffmpeg-$FFMPEG.tar.xz"
-cd "ffmpeg-$FFMPEG"
-LDFLAGS="-dead_strip $LDFLAGS" CFLAGS="-Os $CFLAGS" CXXFLAGS="-Os $CXXFLAGS" \
-	./configure --prefix="$INSTALLDIR" \
-	--enable-cross-compile --arch=x86_64 --cc='clang -arch x86_64' --cxx='clang++ -arch x86_64' \
-	--disable-all --disable-autodetect --disable-static --enable-shared \
-	--enable-avcodec --enable-avformat --enable-avutil --enable-swresample --enable-swscale \
-	--enable-audiotoolbox --enable-videotoolbox \
-	--enable-encoder=ffv1,qtrle,pcm_s16be,pcm_s16le,*_at,*_videotoolbox \
-	--enable-muxer=avi,matroska,mov,mp3,mp4,wav \
-	--enable-protocol=file
-make "-j$NPROCS"
-make install
-cd ..
+if [ "$BUILD_FFMPEG" -ne 0 ]; then
+	echo "Installing FFmpeg..."
+	rm -fr "ffmpeg-$FFMPEG"
+	tar xf "ffmpeg-$FFMPEG.tar.xz"
+	cd "ffmpeg-$FFMPEG"
+	LDFLAGS="-dead_strip $LDFLAGS" CFLAGS="-Os $CFLAGS" CXXFLAGS="-Os $CXXFLAGS" \
+		./configure --prefix="$INSTALLDIR" \
+		--enable-cross-compile --arch=x86_64 --cc='clang -arch x86_64' --cxx='clang++ -arch x86_64' \
+		--disable-all --disable-autodetect --disable-static --enable-shared \
+		--enable-avcodec --enable-avformat --enable-avutil --enable-swresample --enable-swscale \
+		--enable-audiotoolbox --enable-videotoolbox \
+		--enable-encoder=ffv1,qtrle,pcm_s16be,pcm_s16le,*_at,*_videotoolbox \
+		--enable-muxer=avi,matroska,mov,mp3,mp4,wav \
+		--enable-protocol=file
+	make "-j$NPROCS"
+	make install
+	cd ..
+fi
 
 echo "Installing Zstd..."
 rm -fr "zstd-$ZSTD"
@@ -141,7 +148,7 @@ echo "Installing libpng..."
 rm -fr "libpng-$LIBPNG"
 tar xf "libpng-$LIBPNG.tar.xz"
 cd "libpng-$LIBPNG"
-cmake "${CMAKE_COMMON[@]}" -DBUILD_SHARED_LIBS=ON -DPNG_TESTS=OFF -B build
+cmake "${CMAKE_COMMON[@]}" -DBUILD_SHARED_LIBS=ON -DPNG_TESTS=OFF -DPNG_FRAMEWORK=OFF -B build
 make -C build "-j$NPROCS"
 make -C build install
 cd ..
@@ -200,8 +207,10 @@ echo "Installing MoltenVK..."
 rm -fr "MoltenVK-${MOLTENVK}"
 tar xf "v$MOLTENVK.tar.gz"
 cd "MoltenVK-${MOLTENVK}"
-./fetchDependencies --macos
-make macos
+sed -i '' 's/xcodebuild "$@"/xcodebuild $XCODEBUILD_EXTRA_ARGS "$@"/g' fetchDependencies
+sed -i '' 's/XCODEBUILD :=/XCODEBUILD ?=/g' Makefile
+XCODEBUILD_EXTRA_ARGS="VALID_ARCHS=x86_64" ./fetchDependencies --macos
+XCODEBUILD="set -o pipefail && xcodebuild VALID_ARCHS=x86_64" make macos
 cp Package/Latest/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib "$INSTALLDIR/lib/"
 cd ..
 

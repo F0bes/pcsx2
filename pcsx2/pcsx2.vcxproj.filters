@@ -277,6 +277,12 @@
     <Filter Include="System\Ps2\Iop\SIO\PAD">
       <UniqueIdentifier>{2ef3ebf7-d2a3-4b33-8059-a09b82c085ed}</UniqueIdentifier>
     </Filter>
+    <Filter Include="System\Ps2\Debug\ccc">
+      <UniqueIdentifier>{ed1b8261-d8b2-423e-9b45-5a2476c7957a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Misc\Host">
+      <UniqueIdentifier>{9f0d3bda-76d4-42d3-87e9-ce65db9163ef}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include="Docs\License.txt">
@@ -728,9 +734,6 @@
     <ClCompile Include="CDVD\BlockdumpFileReader.cpp">
       <Filter>System\ISO</Filter>
     </ClCompile>
-    <ClCompile Include="DebugTools\SymbolMap.cpp">
-      <Filter>System\Ps2\Debug</Filter>
-    </ClCompile>
     <ClCompile Include="DebugTools\DebugInterface.cpp">
       <Filter>System\Ps2\Debug</Filter>
     </ClCompile>
@@ -827,9 +830,6 @@
     <ClCompile Include="SPU2\ADSR.cpp">
       <Filter>System\Ps2\SPU2</Filter>
     </ClCompile>
-    <ClCompile Include="SPU2\DplIIdecoder.cpp">
-      <Filter>System\Ps2\SPU2</Filter>
-    </ClCompile>
     <ClCompile Include="SPU2\ReadInput.cpp">
       <Filter>System\Ps2\SPU2</Filter>
     </ClCompile>
@@ -837,9 +837,6 @@
       <Filter>System\Ps2\SPU2</Filter>
     </ClCompile>
     <ClCompile Include="SPU2\Reverb.cpp">
-      <Filter>System\Ps2\SPU2</Filter>
-    </ClCompile>
-    <ClCompile Include="SPU2\SndOut.cpp">
       <Filter>System\Ps2\SPU2</Filter>
     </ClCompile>
     <ClCompile Include="SPU2\Wavedump_wav.cpp">
@@ -1049,16 +1046,10 @@
     <ClCompile Include="GS\Renderers\SW\GSDrawScanline.cpp">
       <Filter>System\Ps2\GS\Renderers\Software</Filter>
     </ClCompile>
-    <ClCompile Include="GS\Renderers\SW\GSDrawScanlineCodeGenerator.cpp">
-      <Filter>System\Ps2\GS\Renderers\Software</Filter>
-    </ClCompile>
     <ClCompile Include="GS\Renderers\SW\GSDrawScanlineCodeGenerator.all.cpp">
       <Filter>System\Ps2\GS\Renderers\Software</Filter>
     </ClCompile>
     <ClCompile Include="GS\Renderers\SW\GSRendererSW.cpp">
-      <Filter>System\Ps2\GS\Renderers\Software</Filter>
-    </ClCompile>
-    <ClCompile Include="GS\Renderers\SW\GSSetupPrimCodeGenerator.cpp">
       <Filter>System\Ps2\GS\Renderers\Software</Filter>
     </ClCompile>
     <ClCompile Include="GS\Renderers\SW\GSSetupPrimCodeGenerator.all.cpp">
@@ -1111,9 +1102,6 @@
     </ClCompile>
     <ClCompile Include="GS\Renderers\DX11\D3D.cpp">
       <Filter>System\Ps2\GS\Renderers\Direct3D11</Filter>
-    </ClCompile>
-    <ClCompile Include="SPU2\SndOut_Cubeb.cpp">
-      <Filter>System\Ps2\SPU2</Filter>
     </ClCompile>
     <ClCompile Include="GS\Renderers\Vulkan\GSTextureVK.cpp">
       <Filter>System\Ps2\GS\Renderers\Vulkan</Filter>
@@ -1239,9 +1227,6 @@
       <Filter>System\Ps2\SPU2</Filter>
     </ClCompile>
     <ClCompile Include="SPU2\Dma.cpp">
-      <Filter>System\Ps2\SPU2</Filter>
-    </ClCompile>
-    <ClCompile Include="SPU2\SndOut_XAudio2.cpp">
       <Filter>System\Ps2\SPU2</Filter>
     </ClCompile>
     <ClCompile Include="GSDumpReplayer.cpp">
@@ -1407,8 +1392,65 @@
     <ClCompile Include="SIO\Pad\PadPopn.cpp">
       <Filter>System\Ps2\Iop\SIO\PAD</Filter>
     </ClCompile>
+    <ClCompile Include="DebugTools\SymbolGuardian.cpp">
+      <Filter>System\Ps2\Debug</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\ast.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\elf.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\elf_symtab.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\importer_flags.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\mdebug_analysis.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\mdebug_importer.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\mdebug_section.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\mdebug_symbols.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\sndll.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\stabs.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\stabs_to_ast.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\symbol_database.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\symbol_file.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\symbol_table.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ccc\util.cpp">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClCompile>
     <ClCompile Include="USB\usb-eyetoy\cam-jpeg.cpp">
       <Filter>System\Ps2\USB\usb-eyetoy</Filter>
+    </ClCompile>
+    <ClCompile Include="Host\AudioStream.cpp">
+      <Filter>Misc\Host</Filter>
+    </ClCompile>
+    <ClCompile Include="Host\SDLAudioStream.cpp">
+      <Filter>Misc\Host</Filter>
+    </ClCompile>
+    <ClCompile Include="Host\CubebAudioStream.cpp">
+      <Filter>Misc\Host</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -1643,9 +1685,6 @@
     <ClInclude Include="AsyncFileReader.h">
       <Filter>System\ISO</Filter>
     </ClInclude>
-    <ClInclude Include="DebugTools\SymbolMap.h">
-      <Filter>System\Ps2\Debug</Filter>
-    </ClInclude>
     <ClInclude Include="DebugTools\DebugInterface.h">
       <Filter>System\Ps2\Debug</Filter>
     </ClInclude>
@@ -1718,22 +1757,13 @@
     <ClInclude Include="SPU2\spu2.h">
       <Filter>System\Ps2\SPU2</Filter>
     </ClInclude>
-    <ClInclude Include="SPU2\Mixer.h">
-      <Filter>System\Ps2\SPU2</Filter>
-    </ClInclude>
     <ClInclude Include="SPU2\interpolate_table.h">
       <Filter>System\Ps2\SPU2</Filter>
     </ClInclude>
     <ClInclude Include="SPU2\defs.h">
       <Filter>System\Ps2\SPU2</Filter>
     </ClInclude>
-    <ClInclude Include="SPU2\Global.h">
-      <Filter>System\Ps2\SPU2</Filter>
-    </ClInclude>
     <ClInclude Include="SPU2\regs.h">
-      <Filter>System\Ps2\SPU2</Filter>
-    </ClInclude>
-    <ClInclude Include="SPU2\SndOut.h">
       <Filter>System\Ps2\SPU2</Filter>
     </ClInclude>
     <ClInclude Include="SPU2\spdif.h">
@@ -1961,9 +1991,6 @@
     <ClInclude Include="GS\Renderers\SW\GSDrawScanline.h">
       <Filter>System\Ps2\GS\Renderers\Software</Filter>
     </ClInclude>
-    <ClInclude Include="GS\Renderers\SW\GSDrawScanlineCodeGenerator.h">
-      <Filter>System\Ps2\GS\Renderers\Software</Filter>
-    </ClInclude>
     <ClInclude Include="GS\Renderers\SW\GSDrawScanlineCodeGenerator.all.h">
       <Filter>System\Ps2\GS\Renderers\Software</Filter>
     </ClInclude>
@@ -1974,9 +2001,6 @@
       <Filter>System\Ps2\GS\Renderers\Software</Filter>
     </ClInclude>
     <ClInclude Include="GS\Renderers\SW\GSScanlineEnvironment.h">
-      <Filter>System\Ps2\GS\Renderers\Software</Filter>
-    </ClInclude>
-    <ClInclude Include="GS\Renderers\SW\GSSetupPrimCodeGenerator.h">
       <Filter>System\Ps2\GS\Renderers\Software</Filter>
     </ClInclude>
     <ClInclude Include="GS\Renderers\SW\GSSetupPrimCodeGenerator.all.h">
@@ -2327,8 +2351,62 @@
       <Filter>System\Ps2\Iop\SIO\PAD</Filter>
     </ClInclude>
     <ClInclude Include="SupportURLs.h" />
+    <ClInclude Include="DebugTools\SymbolGuardian.h">
+      <Filter>System\Ps2\Debug</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\ast.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\elf.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\elf_symtab.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\importer_flags.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\mdebug_analysis.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\mdebug_importer.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\mdebug_section.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\mdebug_symbols.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\sndll.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\stabs.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\stabs_to_ast.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\symbol_database.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\symbol_file.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\symbol_table.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ccc\util.h">
+      <Filter>System\Ps2\Debug\ccc</Filter>
+    </ClInclude>
     <ClInclude Include="USB\usb-eyetoy\cam-jpeg.h">
       <Filter>System\Ps2\USB\usb-eyetoy</Filter>
+    </ClInclude>
+    <ClInclude Include="Host\AudioStream.h">
+      <Filter>Misc\Host</Filter>
+    </ClInclude>
+    <ClInclude Include="Host\AudioStreamTypes.h">
+      <Filter>Misc\Host</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

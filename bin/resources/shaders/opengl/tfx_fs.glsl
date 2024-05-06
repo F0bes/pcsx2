@@ -285,7 +285,7 @@ uvec4 sample_4_index(vec4 uv)
 	c.w = sample_c(uv.zw).a;
 	
 #if PS_RTA_SRC_CORRECTION 
-	uvec4 i = uvec4(c * 128.55f); // Denormalize value
+	uvec4 i = uvec4(round(c * 128.25f)); // Denormalize value
 #else
 	uvec4 i = uvec4(c * 255.5f); // Denormalize value
 #endif
@@ -933,6 +933,9 @@ float As = As_rgba.a;
 	float max_color = max(max(Color.r, Color.g), Color.b);
 	float color_compensate = 255.0f / max(128.0f, max_color);
 	Color.rgb *= vec3(color_compensate);
+#elif PS_BLEND_HW == 4
+	// Needed for Cd * (1 - Ad)
+	Color.rgb = vec3(128.0f);
 #endif
 
 #endif

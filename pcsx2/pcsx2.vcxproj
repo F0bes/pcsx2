@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(SolutionDir)common\vsprops\BaseProjectConfig.props" />
-  <Import Project="$(SolutionDir)common\vsprops\ProjectConfigAVX2.props" />
   <Import Project="$(SolutionDir)common\vsprops\WinSDK.props" />
   <PropertyGroup Label="Globals">
     <ProjectGuid>{6C7986C4-3E4D-4DCC-B3C6-6BB12B238995}</ProjectGuid>
@@ -54,8 +53,10 @@
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\vulkan-headers\include</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\d3d12memalloc\include</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\lzma\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\freesurround\include</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\xbyak</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\zydis\include;$(SolutionDir)3rdparty\zydis\dependencies\zycore\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\demangler\include</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>PrecompiledHeader.h</PrecompiledHeaderFile>
       <ForcedIncludeFiles>PrecompiledHeader.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
@@ -129,6 +130,21 @@
     <ClCompile Include="CDVD\Windows\DriveUtility.cpp" />
     <ClCompile Include="CDVD\Windows\IOCtlSrc.cpp" />
     <ClCompile Include="DebugTools\Breakpoints.cpp" />
+    <ClCompile Include="DebugTools\ccc\ast.cpp" />
+    <ClCompile Include="DebugTools\ccc\elf.cpp" />
+    <ClCompile Include="DebugTools\ccc\elf_symtab.cpp" />
+    <ClCompile Include="DebugTools\ccc\importer_flags.cpp" />
+    <ClCompile Include="DebugTools\ccc\mdebug_analysis.cpp" />
+    <ClCompile Include="DebugTools\ccc\mdebug_importer.cpp" />
+    <ClCompile Include="DebugTools\ccc\mdebug_section.cpp" />
+    <ClCompile Include="DebugTools\ccc\mdebug_symbols.cpp" />
+    <ClCompile Include="DebugTools\ccc\sndll.cpp" />
+    <ClCompile Include="DebugTools\ccc\stabs.cpp" />
+    <ClCompile Include="DebugTools\ccc\stabs_to_ast.cpp" />
+    <ClCompile Include="DebugTools\ccc\symbol_database.cpp" />
+    <ClCompile Include="DebugTools\ccc\symbol_file.cpp" />
+    <ClCompile Include="DebugTools\ccc\symbol_table.cpp" />
+    <ClCompile Include="DebugTools\ccc\util.cpp" />
     <ClCompile Include="DebugTools\DebugInterface.cpp" />
     <ClCompile Include="DebugTools\DisassemblyManager.cpp" />
     <ClCompile Include="DebugTools\BiosDebugData.cpp" />
@@ -137,7 +153,7 @@
     <ClCompile Include="DebugTools\MipsAssembler.cpp" />
     <ClCompile Include="DebugTools\MipsAssemblerTables.cpp" />
     <ClCompile Include="DebugTools\MipsStackWalk.cpp" />
-    <ClCompile Include="DebugTools\SymbolMap.cpp" />
+    <ClCompile Include="DebugTools\SymbolGuardian.cpp" />
     <ClCompile Include="DEV9\AdapterUtils.cpp" />
     <ClCompile Include="DEV9\ATA\Commands\ATA_Command.cpp" />
     <ClCompile Include="DEV9\ATA\Commands\ATA_CmdDMA.cpp" />
@@ -199,6 +215,9 @@
     <ClCompile Include="GS\Renderers\Vulkan\VKStreamBuffer.cpp" />
     <ClCompile Include="GS\Renderers\Vulkan\VKSwapChain.cpp" />
     <ClCompile Include="GS\Renderers\Vulkan\vk_mem_alloc.cpp" />
+    <ClCompile Include="Host\AudioStream.cpp" />
+    <ClCompile Include="Host\CubebAudioStream.cpp" />
+    <ClCompile Include="Host\SDLAudioStream.cpp" />
     <ClCompile Include="Hotkeys.cpp" />
     <ClCompile Include="ImGui\FullscreenUI.cpp" />
     <ClCompile Include="ImGui\ImGuiFullscreen.cpp" />
@@ -247,11 +266,7 @@
     <ClCompile Include="SIO\Sio2.cpp" />
     <ClCompile Include="SPU2\Debug.cpp" />
     <ClCompile Include="SPU2\Dma.cpp" />
-    <ClCompile Include="SPU2\DplIIdecoder.cpp" />
-    <ClCompile Include="SPU2\SndOut_Cubeb.cpp" />
-    <ClCompile Include="SPU2\SndOut_XAudio2.cpp" />
     <ClCompile Include="SPU2\wavedump_wav.cpp" />
-    <ClCompile Include="SPU2\SndOut.cpp" />
     <ClCompile Include="SPU2\RegTable.cpp" />
     <ClCompile Include="SPU2\spu2freeze.cpp" />
     <ClCompile Include="SPU2\spu2sys.cpp" />
@@ -285,7 +300,6 @@
     <ClCompile Include="GS\Renderers\Common\GSDirtyRect.cpp" />
     <ClCompile Include="GS\GSDrawingContext.cpp" />
     <ClCompile Include="GS\Renderers\SW\GSDrawScanline.cpp" />
-    <ClCompile Include="GS\Renderers\SW\GSDrawScanlineCodeGenerator.cpp" />
     <ClCompile Include="GS\Renderers\SW\GSDrawScanlineCodeGenerator.all.cpp" />
     <ClCompile Include="GS\GSDump.cpp" />
     <ClCompile Include="GS\Renderers\Common\GSFunctionMap.cpp" />
@@ -302,7 +316,6 @@
     <ClCompile Include="GS\Renderers\HW\GSRendererHWMultiISA.cpp" />
     <ClCompile Include="GS\Renderers\Null\GSRendererNull.cpp" />
     <ClCompile Include="GS\Renderers\SW\GSRendererSW.cpp" />
-    <ClCompile Include="GS\Renderers\SW\GSSetupPrimCodeGenerator.cpp" />
     <ClCompile Include="GS\Renderers\SW\GSSetupPrimCodeGenerator.all.cpp" />
     <ClCompile Include="GS\GSState.cpp" />
     <ClCompile Include="GS\GSTables.cpp" />
@@ -480,6 +493,21 @@
     <ClInclude Include="CDVD\ThreadedFileReader.h" />
     <ClInclude Include="CDVD\zlib_indexed.h" />
     <ClInclude Include="DebugTools\Breakpoints.h" />
+    <ClInclude Include="DebugTools\ccc\ast.h" />
+    <ClInclude Include="DebugTools\ccc\elf.h" />
+    <ClInclude Include="DebugTools\ccc\elf_symtab.h" />
+    <ClInclude Include="DebugTools\ccc\importer_flags.h" />
+    <ClInclude Include="DebugTools\ccc\mdebug_analysis.h" />
+    <ClInclude Include="DebugTools\ccc\mdebug_importer.h" />
+    <ClInclude Include="DebugTools\ccc\mdebug_section.h" />
+    <ClInclude Include="DebugTools\ccc\mdebug_symbols.h" />
+    <ClInclude Include="DebugTools\ccc\sndll.h" />
+    <ClInclude Include="DebugTools\ccc\stabs.h" />
+    <ClInclude Include="DebugTools\ccc\stabs_to_ast.h" />
+    <ClInclude Include="DebugTools\ccc\symbol_database.h" />
+    <ClInclude Include="DebugTools\ccc\symbol_file.h" />
+    <ClInclude Include="DebugTools\ccc\symbol_table.h" />
+    <ClInclude Include="DebugTools\ccc\util.h" />
     <ClInclude Include="DebugTools\DebugInterface.h" />
     <ClInclude Include="DebugTools\DisassemblyManager.h" />
     <ClInclude Include="DebugTools\BiosDebugData.h" />
@@ -488,7 +516,7 @@
     <ClInclude Include="DebugTools\MipsAssembler.h" />
     <ClInclude Include="DebugTools\MipsAssemblerTables.h" />
     <ClInclude Include="DebugTools\MipsStackWalk.h" />
-    <ClInclude Include="DebugTools\SymbolMap.h" />
+    <ClInclude Include="DebugTools\SymbolGuardian.h" />
     <ClInclude Include="DEV9\AdapterUtils.h" />
     <ClInclude Include="DEV9\ATA\ATA.h" />
     <ClInclude Include="DEV9\ATA\HddCreate.h" />
@@ -548,6 +576,8 @@
     <ClInclude Include="GS\Renderers\Vulkan\VKShaderCache.h" />
     <ClInclude Include="GS\Renderers\Vulkan\VKStreamBuffer.h" />
     <ClInclude Include="GS\Renderers\Vulkan\VKSwapChain.h" />
+    <ClInclude Include="Host\AudioStream.h" />
+    <ClInclude Include="Host\AudioStreamTypes.h" />
     <ClInclude Include="ImGui\FullscreenUI.h" />
     <ClInclude Include="ImGui\ImGuiAnimated.h" />
     <ClInclude Include="ImGui\ImGuiFullscreen.h" />
@@ -598,13 +628,10 @@
     <ClInclude Include="SIO\SioTypes.h" />
     <ClInclude Include="SPU2\Debug.h" />
     <ClInclude Include="SPU2\Dma.h" />
-    <ClInclude Include="SPU2\Global.h" />
     <ClInclude Include="SPU2\interpolate_table.h" />
-    <ClInclude Include="SPU2\SndOut.h" />
     <ClInclude Include="SPU2\spdif.h" />
     <ClInclude Include="SPU2\defs.h" />
     <ClInclude Include="SPU2\regs.h" />
-    <ClInclude Include="SPU2\Mixer.h" />
     <ClInclude Include="SPU2\spu2.h" />
     <ClInclude Include="GS\Renderers\OpenGL\GLState.h" />
     <ClInclude Include="GS\GS.h" />
@@ -622,7 +649,6 @@
     <ClInclude Include="GS\GSDrawingContext.h" />
     <ClInclude Include="GS\GSDrawingEnvironment.h" />
     <ClInclude Include="GS\Renderers\SW\GSDrawScanline.h" />
-    <ClInclude Include="GS\Renderers\SW\GSDrawScanlineCodeGenerator.h" />
     <ClInclude Include="GS\Renderers\SW\GSDrawScanlineCodeGenerator.all.h" />
     <ClInclude Include="GS\Renderers\SW\GSNewCodeGenerator.h" />
     <ClInclude Include="GS\GSDump.h" />
@@ -639,7 +665,6 @@
     <ClInclude Include="GS\Renderers\Null\GSRendererNull.h" />
     <ClInclude Include="GS\Renderers\SW\GSRendererSW.h" />
     <ClInclude Include="GS\Renderers\SW\GSScanlineEnvironment.h" />
-    <ClInclude Include="GS\Renderers\SW\GSSetupPrimCodeGenerator.h" />
     <ClInclude Include="GS\Renderers\SW\GSSetupPrimCodeGenerator.all.h" />
     <ClInclude Include="GS\GSState.h" />
     <ClInclude Include="GS\GSTables.h" />
@@ -821,6 +846,9 @@
     <ProjectReference Include="..\3rdparty\discord-rpc\discord-rpc.vcxproj">
       <Project>{e960dfdf-1bd3-4c29-b251-d1a0919c9b09}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\3rdparty\freesurround\freesurround.vcxproj">
+      <Project>{1dd0b31f-37f0-4a36-a521-74133aca4737}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\3rdparty\libzip\libzip.vcxproj">
       <Project>{20b2e9fe-f020-42a0-b324-956f5b06ea68}</Project>
     </ProjectReference>
@@ -838,6 +866,9 @@
     </ProjectReference>
     <ProjectReference Include="..\3rdparty\glad\glad.vcxproj">
       <Project>{c0293b32-5acf-40f0-aa6c-e6da6f3bf33a}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\3rdparty\demangler\demangler.vcxproj">
+      <Project>{d31a6dd1-99ca-41d8-a230-1fae913c8989}</Project>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

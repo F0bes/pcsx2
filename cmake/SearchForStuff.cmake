@@ -18,7 +18,7 @@ find_package(Zstd 1.5.5 REQUIRED)
 find_package(LZ4 REQUIRED)
 find_package(WebP REQUIRED) # v1.3.2, spews an error on Linux because no pkg-config.
 find_package(SDL2 2.30.2 REQUIRED)
-find_package(Freetype 2.13.1 REQUIRED)
+find_package(Freetype 2.11.1 REQUIRED)
 
 if(USE_VULKAN)
 	find_package(Shaderc REQUIRED)
@@ -109,6 +109,7 @@ add_subdirectory(3rdparty/libzip EXCLUDE_FROM_ALL)
 add_subdirectory(3rdparty/rcheevos EXCLUDE_FROM_ALL)
 add_subdirectory(3rdparty/rapidjson EXCLUDE_FROM_ALL)
 add_subdirectory(3rdparty/discord-rpc EXCLUDE_FROM_ALL)
+add_subdirectory(3rdparty/freesurround EXCLUDE_FROM_ALL)
 
 if(USE_OPENGL)
 	add_subdirectory(3rdparty/glad EXCLUDE_FROM_ALL)

@@ -57,9 +57,11 @@ target_sources(pcsx2-qt PRIVATE
 	Settings/AdvancedSettingsWidget.cpp
 	Settings/AdvancedSettingsWidget.h
 	Settings/AdvancedSettingsWidget.ui
+	Settings/AudioExpansionSettingsDialog.ui
 	Settings/AudioSettingsWidget.cpp
 	Settings/AudioSettingsWidget.h
 	Settings/AudioSettingsWidget.ui
+	Settings/AudioStretchSettingsDialog.ui
 	Settings/BIOSSettingsWidget.cpp
 	Settings/BIOSSettingsWidget.h
 	Settings/BIOSSettingsWidget.ui
@@ -178,6 +180,22 @@ target_sources(pcsx2-qt PRIVATE
 	Debugger/Models/StackModel.h
 	Debugger/Models/SavedAddressesModel.cpp
 	Debugger/Models/SavedAddressesModel.h
+	Debugger/SymbolTree/NewSymbolDialogs.cpp
+	Debugger/SymbolTree/NewSymbolDialogs.h
+	Debugger/SymbolTree/NewSymbolDialog.ui
+	Debugger/SymbolTree/SymbolTreeLocation.cpp
+	Debugger/SymbolTree/SymbolTreeLocation.h
+	Debugger/SymbolTree/SymbolTreeModel.cpp
+	Debugger/SymbolTree/SymbolTreeModel.h
+	Debugger/SymbolTree/SymbolTreeNode.cpp
+	Debugger/SymbolTree/SymbolTreeNode.h
+	Debugger/SymbolTree/SymbolTreeDelegates.cpp
+	Debugger/SymbolTree/SymbolTreeDelegates.h
+	Debugger/SymbolTree/SymbolTreeWidgets.cpp
+	Debugger/SymbolTree/SymbolTreeWidgets.h
+	Debugger/SymbolTree/SymbolTreeWidget.ui
+	Debugger/SymbolTree/TypeString.cpp
+	Debugger/SymbolTree/TypeString.h
 	Tools/InputRecording/NewInputRecordingDlg.cpp
 	Tools/InputRecording/NewInputRecordingDlg.h
 	Tools/InputRecording/NewInputRecordingDlg.ui
