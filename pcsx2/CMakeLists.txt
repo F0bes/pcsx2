@@ -39,6 +39,8 @@ endif()
 if(USE_LINKED_FFMPEG)
 	target_compile_definitions(PCSX2_FLAGS INTERFACE USE_LINKED_FFMPEG)
 	target_link_libraries(PCSX2_FLAGS INTERFACE FFMPEG::avcodec FFMPEG::avformat FFMPEG::avutil FFMPEG::swscale FFMPEG::swresample)
+else()
+	target_link_libraries(PCSX2_FLAGS INTERFACE datrie)
 endif()
 
 if(WIN32)
