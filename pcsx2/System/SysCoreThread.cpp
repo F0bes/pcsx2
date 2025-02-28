@@ -44,6 +44,8 @@
 #include "common/Threading.h"
 #include "IopBios.h"
 
+#include "Vanguard/VanguardClient.h"
+
 #ifdef __WXMSW__
 #include <wx/msw/wrapwin.h>
 #endif

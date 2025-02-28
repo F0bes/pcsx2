@@ -24,6 +24,7 @@
 #include "common/SafeArray.inl"
 #include "Dialogs/LogOptionsDialog.h"
 #include "DebugTools/Debug.h"
+#include "Vanguard/VanguardClient.h"
 
 #include <wx/textfile.h>
 
@@ -1266,7 +1267,8 @@ void Pcsx2App::DisableWindowLogging() const
 
 void OSDlog(ConsoleColors color, bool console, const std::string& str)
 {
-	GSosdLog(str.c_str(), wxGetApp().GetProgramLog()->GetRGBA(color));
+    if (VanguardClientUnmanaged::RTC_OSD_ENABLED())
+		GSosdLog(str.c_str(), wxGetApp().GetProgramLog()->GetRGBA(color));
 
 	if (console)
 		Console.WriteLn(color, str.c_str());

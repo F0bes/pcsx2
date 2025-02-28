@@ -110,5 +110,4 @@ private:
 	bool open(const wxString path, bool newRecording);
 	bool verifyRecordingFileHeader();
 };
-
 #endif

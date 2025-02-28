@@ -20,6 +20,6 @@
 #include "Saveslots.h"
 
 extern void StateCopy_SaveToFile(const wxString& file);
-extern void StateCopy_LoadFromFile(const wxString& file);
+extern void StateCopy_LoadFromFile(const wxString& file, bool resumeAfterLoad = true);
 extern void StateCopy_SaveToSlot(uint num);
 extern void StateCopy_LoadFromSlot(uint slot, bool isFromBackup = false);

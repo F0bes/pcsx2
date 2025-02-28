@@ -198,7 +198,7 @@ public:
 
 		this->m_buffer = (T*)malloc(this->m_size * sizeof(T));
 		if (!this->m_buffer)
-			throw Exception::OutOfMemory(L"ScopedAlloc");
+			throw ::Exception::OutOfMemory(L"ScopedAlloc");
 	}
 
 	virtual void Resize(size_t newsize)
@@ -207,7 +207,7 @@ public:
 		this->m_buffer = (T*)realloc(this->m_buffer, this->m_size * sizeof(T));
 
 		if (!this->m_buffer)
-			throw Exception::OutOfMemory(L"ScopedAlloc::Resize");
+			throw ::Exception::OutOfMemory(L"ScopedAlloc::Resize");
 	}
 
 	using _parent::operator[];
@@ -248,7 +248,7 @@ public:
 
 		this->m_buffer = (T*)_aligned_malloc(this->m_size * sizeof(T), align);
 		if (!this->m_buffer)
-			throw Exception::OutOfMemory(L"ScopedAlignedAlloc");
+			throw ::Exception::OutOfMemory(L"ScopedAlignedAlloc");
 	}
 
 	virtual void Resize(size_t newsize)
@@ -257,7 +257,7 @@ public:
 		this->m_size = newsize;
 
 		if (!this->m_buffer)
-			throw Exception::OutOfMemory(L"ScopedAlignedAlloc::Resize");
+			throw ::Exception::OutOfMemory(L"ScopedAlignedAlloc::Resize");
 	}
 
 	using _parent::operator[];

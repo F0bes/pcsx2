@@ -139,7 +139,6 @@ void AppCoreThread::Reset()
 		GetSysExecutorThread().PostEvent(SysExecEvent_InvokeCoreThreadMethod(&AppCoreThread::Reset));
 		return;
 	}
-
 	_parent::Reset();
 }
 
@@ -350,12 +349,14 @@ static int loadGameSettings(Pcsx2Config& dest, const GameDatabaseSchema::GameEnt
 	return gf;
 }
 
+//Vanguard - MOVE TO HEADER 
+
 // Used to track the current game serial/id, and used to disable verbose logging of
 // applied patches if the game info hasn't changed.  (avoids spam when suspending/resuming
 // or using TAB or other things), but gets verbose again when booting (even if the same game).
 // File scope since it gets reset externally when rebooting
-#define _UNKNOWN_GAME_KEY (L"_UNKNOWN_GAME_KEY")
-static wxString curGameKey = _UNKNOWN_GAME_KEY;
+//#define _UNKNOWN_GAME_KEY (L"_UNKNOWN_GAME_KEY")
+//static wxString curGameKey = _UNKNOWN_GAME_KEY;
 
 void PatchesVerboseReset()
 {

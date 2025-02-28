@@ -46,9 +46,10 @@
 #include "common/AppTrait.h"
 
 #include <wx/stdpaths.h>
+#include "Vanguard/VanguardClient.h"
 
 #ifdef __WXMSW__
-#	include <wx/msw/wrapwin.h>		// needed to implement the app!
+#include <wx/msw/wrapwin.h> // needed to implement the app!
 #endif
 
 #ifdef __WXGTK__
@@ -67,7 +68,7 @@
 #undef EAX
 #undef EBX
 #undef ECX
-#include <wx/osx/private.h>		// needed to implement the app!
+#include <wx/osx/private.h> // needed to implement the app!
 #endif
 wxIMPLEMENT_APP(Pcsx2App);
 
@@ -80,27 +81,31 @@ uptr pDsp[2];
 // are multiple variations on the BIOS and BIOS folder checks).
 wxString BIOS_GetMsg_Required()
 {
-	return pxE(L"PCSX2 requires a PS2 BIOS in order to run.  For legal reasons, you *must* obtain a BIOS from an actual PS2 unit that you own (borrowing doesn't count).  Please consult the FAQs and Guides for further instructions."
-		);
+    return pxE(L"PCSX2 requires a PS2 BIOS in order to run.  For legal reasons, you *must* obtain a BIOS from an actual PS2 unit that you own (borrowing doesn't count).  Please consult the FAQs and Guides for further instructions.");
 }
 
 class BIOSLoadErrorEvent : public pxExceptionEvent
 {
-	typedef pxExceptionEvent _parent;
+    typedef pxExceptionEvent _parent;
 
 public:
-	BIOSLoadErrorEvent(BaseException* ex = NULL) : _parent(ex) {}
-	BIOSLoadErrorEvent(const BaseException& ex) : _parent(ex) {}
+    BIOSLoadErrorEvent(BaseException *ex = NULL)
+        : _parent(ex)
+    {
+    }
+    BIOSLoadErrorEvent(const BaseException &ex)
+        : _parent(ex)
+    {
+    }
 
-	virtual ~BIOSLoadErrorEvent() = default;
-	virtual BIOSLoadErrorEvent *Clone() const { return new BIOSLoadErrorEvent(*this); }
+    virtual ~BIOSLoadErrorEvent() = default;
+    virtual BIOSLoadErrorEvent *Clone() const { return new BIOSLoadErrorEvent(*this); }
 
 protected:
-	void InvokeEvent();
-
+    void InvokeEvent();
 };
 
-static bool HandleBIOSError(BaseException& ex)
+static bool HandleBIOSError(BaseException &ex)
 {
 	if (!pxDialogExists(L"Dialog:" + Dialogs::SysConfigDialog::GetNameStatic()))
 	{
@@ -113,37 +118,38 @@ static bool HandleBIOSError(BaseException& ex)
 		Msgbox::Alert(ex.FormatDisplayMessage() + L"\n\n" + BIOS_GetMsg_Required(), _("PS2 BIOS Error"));
 	}
 
-	g_Conf->ComponentsTabName = L"BIOS";
+    g_Conf->ComponentsTabName = L"BIOS";
 
 	return AppOpenModalDialog<Dialogs::SysConfigDialog>(L"BIOS") != wxID_CANCEL;
 }
 
 void BIOSLoadErrorEvent::InvokeEvent()
 {
-	if (!m_except) return;
+    if (!m_except)
+        return;
 
-	ScopedExcept deleteMe(m_except);
-	m_except = NULL;
+    ScopedExcept deleteMe(m_except);
+    m_except = NULL;
 
-	if (!HandleBIOSError(*deleteMe))
-	{
-		Console.Warning("User canceled BIOS configuration.");
-		Msgbox::Alert(_("Warning! Valid BIOS has not been selected. PCSX2 may be inoperable."));
-	}
+    if (!HandleBIOSError(*deleteMe)) {
+        Console.Warning("User canceled BIOS configuration.");
+        Msgbox::Alert(_("Warning! Valid BIOS has not been selected. PCSX2 may be inoperable."));
+    }
 }
 
 // Allows for activating menu actions from anywhere in PCSX2.
 // And it's Thread Safe!
-void Pcsx2App::PostMenuAction( MenuIdentifiers menu_id ) const
+void Pcsx2App::PostMenuAction(MenuIdentifiers menu_id) const
 {
-	MainEmuFrame* mainFrame = GetMainFramePtr();
-	if( mainFrame == NULL ) return;
+    MainEmuFrame *mainFrame = GetMainFramePtr();
+    if (mainFrame == NULL)
+        return;
 
-	wxCommandEvent joe( wxEVT_MENU, menu_id );
-	if( wxThread::IsMain() )
-		mainFrame->GetEventHandler()->ProcessEvent( joe );
-	else
-		mainFrame->GetEventHandler()->AddPendingEvent( joe );
+    wxCommandEvent joe(wxEVT_MENU, menu_id);
+    if (wxThread::IsMain())
+        mainFrame->GetEventHandler()->ProcessEvent(joe);
+    else
+        mainFrame->GetEventHandler()->AddPendingEvent(joe);
 }
 
 // --------------------------------------------------------------------------------------
@@ -155,53 +161,54 @@ void Pcsx2App::PostMenuAction( MenuIdentifiers menu_id ) const
 //
 class Pcsx2AppMethodEvent : public pxActionEvent
 {
-	typedef pxActionEvent _parent;
-	wxDECLARE_DYNAMIC_CLASS_NO_ASSIGN(Pcsx2AppMethodEvent);
+    typedef pxActionEvent _parent;
+    wxDECLARE_DYNAMIC_CLASS_NO_ASSIGN(Pcsx2AppMethodEvent);
 
 protected:
-	FnPtr_Pcsx2App	m_Method;
+    FnPtr_Pcsx2App m_Method;
 
 public:
-	virtual ~Pcsx2AppMethodEvent() = default;
-	virtual Pcsx2AppMethodEvent *Clone() const { return new Pcsx2AppMethodEvent(*this); }
+    virtual ~Pcsx2AppMethodEvent() = default;
+    virtual Pcsx2AppMethodEvent *Clone() const { return new Pcsx2AppMethodEvent(*this); }
 
-	explicit Pcsx2AppMethodEvent( FnPtr_Pcsx2App method=NULL, SynchronousActionState* sema=NULL )
-		: pxActionEvent( sema )
-	{
-		m_Method = method;
-	}
+    explicit Pcsx2AppMethodEvent(FnPtr_Pcsx2App method = NULL, SynchronousActionState *sema = NULL)
+        : pxActionEvent(sema)
+    {
+        m_Method = method;
+    }
 
-	explicit Pcsx2AppMethodEvent( FnPtr_Pcsx2App method, SynchronousActionState& sema )
-		: pxActionEvent( sema )
-	{
-		m_Method = method;
-	}
-	
-	Pcsx2AppMethodEvent( const Pcsx2AppMethodEvent& src )
-		: pxActionEvent( src )
-	{
-		m_Method = src.m_Method;
-	}
-		
-	void SetMethod( FnPtr_Pcsx2App method )
-	{
-		m_Method = method;
-	}
-	
+    explicit Pcsx2AppMethodEvent(FnPtr_Pcsx2App method, SynchronousActionState &sema)
+        : pxActionEvent(sema)
+    {
+        m_Method = method;
+    }
+
+    Pcsx2AppMethodEvent(const Pcsx2AppMethodEvent &src)
+        : pxActionEvent(src)
+    {
+        m_Method = src.m_Method;
+    }
+
+    void SetMethod(FnPtr_Pcsx2App method)
+    {
+        m_Method = method;
+    }
+
 protected:
-	void InvokeEvent()
-	{
-		if( m_Method ) (wxGetApp().*m_Method)();
-	}
+    void InvokeEvent()
+    {
+        if (m_Method)
+            (wxGetApp().*m_Method)();
+    }
 };
 
 
-wxIMPLEMENT_DYNAMIC_CLASS( Pcsx2AppMethodEvent, pxActionEvent );
+wxIMPLEMENT_DYNAMIC_CLASS(Pcsx2AppMethodEvent, pxActionEvent);
 
 #ifdef __WXMSW__
-extern int TranslateVKToWXK( u32 keysym );
-#elif defined( __WXGTK__ )
-extern int TranslateGDKtoWXK( u32 keysym );
+extern int TranslateVKToWXK(u32 keysym);
+#elif defined(__WXGTK__)
+extern int TranslateGDKtoWXK(u32 keysym);
 #endif
 
 void Pcsx2App::PadKeyDispatch(const HostKeyEvent& ev)
@@ -210,48 +217,44 @@ void Pcsx2App::PadKeyDispatch(const HostKeyEvent& ev)
 
 //returns 0 for normal keys and a WXK_* value for special keys
 #ifdef __WXMSW__
-	const int vkey = TranslateVKToWXK(ev.key);
-#elif defined( __WXMAC__ )
-	const int vkey = wxCharCodeWXToOSX( (wxKeyCode) ev.key );
-#elif defined( __WXGTK__ )
-	const int vkey = TranslateGDKtoWXK( ev.key );
+    const int vkey = TranslateVKToWXK(ev.key);
+#elif defined(__WXMAC__)
+    const int vkey = wxCharCodeWXToOSX((wxKeyCode)ev.key);
+#elif defined(__WXGTK__)
+    const int vkey = TranslateGDKtoWXK(ev.key);
 #else
-#	error Unsupported Target Platform.
+#error Unsupported Target Platform.
 #endif
 
-	// Don't rely on current event handling to get the state of those specials keys.
-	// Typical linux bug: hit ctrl-alt key to switch the desktop. Key will be released
-	// outside of the window so the app isn't aware of the current key state.
-	m_kevt.m_shiftDown = wxGetKeyState(WXK_SHIFT);
-	m_kevt.m_controlDown = wxGetKeyState(WXK_CONTROL);
-	m_kevt.m_altDown = wxGetKeyState(WXK_MENU) || wxGetKeyState(WXK_ALT);
+    // Don't rely on current event handling to get the state of those specials keys.
+    // Typical linux bug: hit ctrl-alt key to switch the desktop. Key will be released
+    // outside of the window so the app isn't aware of the current key state.
+    m_kevt.m_shiftDown = wxGetKeyState(WXK_SHIFT);
+    m_kevt.m_controlDown = wxGetKeyState(WXK_CONTROL);
+    m_kevt.m_altDown = wxGetKeyState(WXK_MENU) || wxGetKeyState(WXK_ALT);
 
-	m_kevt.m_keyCode = vkey? vkey : ev.key;
+    m_kevt.m_keyCode = vkey ? vkey : ev.key;
 
-	if (DevConWriterEnabled && m_kevt.GetEventType() == wxEVT_KEY_DOWN) {
-		wxString strFromCode = wxAcceleratorEntry(
-			(m_kevt.m_shiftDown ? wxACCEL_SHIFT : 0) | (m_kevt.m_controlDown ? wxACCEL_CTRL : 0) | (m_kevt.m_altDown ? wxACCEL_ALT : 0),
-			m_kevt.m_keyCode
-			).ToString();
+    if (DevConWriterEnabled && m_kevt.GetEventType() == wxEVT_KEY_DOWN) {
+        wxString strFromCode = wxAcceleratorEntry(
+                                   (m_kevt.m_shiftDown ? wxACCEL_SHIFT : 0) | (m_kevt.m_controlDown ? wxACCEL_CTRL : 0) | (m_kevt.m_altDown ? wxACCEL_ALT : 0),
+                                   m_kevt.m_keyCode)
+                                   .ToString();
 
-		if (strFromCode.EndsWith(L"\\"))
-			strFromCode += L"\\"; // If copied into PCSX2_keys.ini, \ needs escaping
+        if (strFromCode.EndsWith(L"\\"))
+            strFromCode += L"\\"; // If copied into PCSX2_keys.ini, \ needs escaping
 
-		Console.WriteLn(wxString(L"> Key: %s (Code: %ld)"),	WX_STR(strFromCode), m_kevt.m_keyCode);
-	}
+        Console.WriteLn(wxString(L"> Key: %s (Code: %ld)"), WX_STR(strFromCode), m_kevt.m_keyCode);
+    }
 
-	if( m_kevt.GetEventType() == wxEVT_KEY_DOWN )
-	{
-		if( GSFrame* gsFrame = wxGetApp().GetGsFramePtr() )
-		{
-			gsFrame->GetViewport()->DirectKeyCommand( m_kevt );
-		}
-		else
-		{
-			m_kevt.SetId( pxID_PadHandler_Keydown );
-			wxGetApp().ProcessEvent( m_kevt );
-		}
-	}
+    if (m_kevt.GetEventType() == wxEVT_KEY_DOWN) {
+        if (GSFrame *gsFrame = wxGetApp().GetGsFramePtr()) {
+            gsFrame->GetViewport()->DirectKeyCommand(m_kevt);
+        } else {
+            m_kevt.SetId(pxID_PadHandler_Keydown);
+            wxGetApp().ProcessEvent(m_kevt);
+        }
+    }
 }
 
 // --------------------------------------------------------------------------------------
@@ -271,10 +274,10 @@ void Pcsx2App::PadKeyDispatch(const HostKeyEvent& ev)
 class pxMessageOutputMessageBox : public wxMessageOutput
 {
 public:
-	pxMessageOutputMessageBox() { }
+    pxMessageOutputMessageBox() {}
 
-	// DoPrintf in wxMessageOutputBase (wxWidgets 3.0) uses this.
-	virtual void Output(const wxString &out);
+    // DoPrintf in wxMessageOutputBase (wxWidgets 3.0) uses this.
+    virtual void Output(const wxString &out);
 };
 
 // EXTRAORDINARY HACK!  wxWidgets does not provide a clean way of overriding the commandline options
@@ -284,56 +287,55 @@ public:
 // commandline window using an identifier we know is contained in it, and then format our own window
 // display. :D  --air
 
-void pxMessageOutputMessageBox::Output(const wxString& out)
+void pxMessageOutputMessageBox::Output(const wxString &out)
 {
-	using namespace pxSizerFlags;
+    using namespace pxSizerFlags;
 
-	wxString isoFormatted;
-	isoFormatted.Printf(L"[%s]", _("IsoFile"));
+    wxString isoFormatted;
+    isoFormatted.Printf(L"[%s]", _("IsoFile"));
 
-	int pos = out.Find(isoFormatted.c_str());
+    int pos = out.Find(isoFormatted.c_str());
 
-	// I've no idea when this is true.
-	if (pos == wxNOT_FOUND)
-	{
-		Msgbox::Alert( out ); return;
-	}
+    // I've no idea when this is true.
+    if (pos == wxNOT_FOUND) {
+        Msgbox::Alert(out);
+        return;
+    }
 
-	pos += isoFormatted.Length();
+    pos += isoFormatted.Length();
 
-	wxDialogWithHelpers popup( NULL, AddAppName(_("%s Commandline Options")) );
-	popup.SetMinWidth( 640 );
-	popup += popup.Heading(out.Mid(0, pos));
-	//popup += ;
-	//popup += popup.Text(out.Mid(pos, out.Length())).Align( wxALIGN_LEFT ) | pxExpand.Border(wxALL, StdPadding*3);
+    wxDialogWithHelpers popup(NULL, AddAppName(_("%s Commandline Options")));
+    popup.SetMinWidth(640);
+    popup += popup.Heading(out.Mid(0, pos));
+    //popup += ;
+    //popup += popup.Text(out.Mid(pos, out.Length())).Align( wxALIGN_LEFT ) | pxExpand.Border(wxALL, StdPadding*3);
 
-	wxTextCtrl* traceArea = new wxTextCtrl(
-		&popup, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
-		wxTE_READONLY | wxTE_MULTILINE | wxTE_RICH2 | wxHSCROLL
-	);
+    wxTextCtrl *traceArea = new wxTextCtrl(
+        &popup, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
+        wxTE_READONLY | wxTE_MULTILINE | wxTE_RICH2 | wxHSCROLL);
 
-	traceArea->SetDefaultStyle( wxTextAttr( wxNullColour, wxNullColour, pxGetFixedFont(9) ) );
-	traceArea->SetFont( pxGetFixedFont(9) );
+    traceArea->SetDefaultStyle(wxTextAttr(wxNullColour, wxNullColour, pxGetFixedFont(9)));
+    traceArea->SetFont(pxGetFixedFont(9));
 
-	int fonty = traceArea->GetCharHeight();
+    int fonty = traceArea->GetCharHeight();
 
-	traceArea->SetMinSize( wxSize( traceArea->GetMinWidth(), (fonty+1)*18 ) );
-	traceArea->WriteText( pxTextWrapper(wxString(L' ', 18)).Wrap(traceArea, out.Mid(pos, out.Length()), 600).GetResult() );
-	traceArea->SetInsertionPoint( 0 );
-	traceArea->ShowPosition( 0 );
+    traceArea->SetMinSize(wxSize(traceArea->GetMinWidth(), (fonty + 1) * 18));
+    traceArea->WriteText(pxTextWrapper(wxString(L' ', 18)).Wrap(traceArea, out.Mid(pos, out.Length()), 600).GetResult());
+    traceArea->SetInsertionPoint(0);
+    traceArea->ShowPosition(0);
 
-	popup += traceArea	| pxExpand.Border(wxALL, StdPadding*3);
+    popup += traceArea | pxExpand.Border(wxALL, StdPadding * 3);
 
-	pxIssueConfirmation(popup, MsgButtons().Close() );
+    pxIssueConfirmation(popup, MsgButtons().Close());
 }
 #endif
 
-wxMessageOutput* Pcsx2AppTraits::CreateMessageOutput()
+wxMessageOutput *Pcsx2AppTraits::CreateMessageOutput()
 {
 #ifdef __UNIX__
-	return _parent::CreateMessageOutput();
+    return _parent::CreateMessageOutput();
 #else
-	return new pxMessageOutputMessageBox;
+    return new pxMessageOutputMessageBox;
 #endif
 }
 
@@ -345,46 +347,46 @@ wxMessageOutput* Pcsx2AppTraits::CreateMessageOutput()
 class Pcsx2StandardPaths : public wxStandardPaths
 {
 public:
-	wxString GetResourcesDir() const
-	{
-		return Path::Combine( GetDataDir(), L"Langs" );
-	}
+    wxString GetResourcesDir() const
+    {
+        return Path::Combine(GetDataDir(), L"Langs");
+    }
 
 #ifdef __POSIX__
-	wxString GetUserLocalDataDir() const
-	{
-		// I got memory corruption inside wxGetEnv when I heavily toggle the GS renderer (F9). It seems wxGetEnv
-		// isn't thread safe? To avoid any issue on this read only variable, I cache the result.
-		static wxString cache_dir;
-		if (!cache_dir.IsEmpty()) return cache_dir;
+    wxString GetUserLocalDataDir() const
+    {
+        // I got memory corruption inside wxGetEnv when I heavily toggle the GS renderer (F9). It seems wxGetEnv
+        // isn't thread safe? To avoid any issue on this read only variable, I cache the result.
+        static wxString cache_dir;
+        if (!cache_dir.IsEmpty())
+            return cache_dir;
 
-		// Note: GetUserLocalDataDir() on linux return $HOME/.pcsx2 unfortunately it does not follow the XDG standard
-		// So we re-implement it, to follow the standard.
-		wxDirName user_local_dir;
-		wxDirName default_config_dir = (wxDirName)Path::Combine( L".config", pxGetAppName() );
-		wxString xdg_home_value;
-		if( wxGetEnv(L"XDG_CONFIG_HOME", &xdg_home_value) ) {
-			if ( xdg_home_value.IsEmpty() ) {
-				// variable exist but it is empty. So use the default value
-				user_local_dir = (wxDirName)Path::Combine( GetUserConfigDir() , default_config_dir);
-			} else {
-				user_local_dir = (wxDirName)Path::Combine( xdg_home_value, pxGetAppName());
-			}
-		} else {
-			// variable do not exist
-			user_local_dir = (wxDirName)Path::Combine( GetUserConfigDir() , default_config_dir);
-		}
+        // Note: GetUserLocalDataDir() on linux return $HOME/.pcsx2 unfortunately it does not follow the XDG standard
+        // So we re-implement it, to follow the standard.
+        wxDirName user_local_dir;
+        wxDirName default_config_dir = (wxDirName)Path::Combine(L".config", pxGetAppName());
+        wxString xdg_home_value;
+        if (wxGetEnv(L"XDG_CONFIG_HOME", &xdg_home_value)) {
+            if (xdg_home_value.IsEmpty()) {
+                // variable exist but it is empty. So use the default value
+                user_local_dir = (wxDirName)Path::Combine(GetUserConfigDir(), default_config_dir);
+            } else {
+                user_local_dir = (wxDirName)Path::Combine(xdg_home_value, pxGetAppName());
+            }
+        } else {
+            // variable do not exist
+            user_local_dir = (wxDirName)Path::Combine(GetUserConfigDir(), default_config_dir);
+        }
 
-		cache_dir = user_local_dir.ToString();
+        cache_dir = user_local_dir.ToString();
 
-		return cache_dir;
-	}
+        return cache_dir;
+    }
 #endif
-
 };
 #endif // ifdef __APPLE__
 
-wxStandardPaths& Pcsx2AppTraits::GetStandardPaths()
+wxStandardPaths &Pcsx2AppTraits::GetStandardPaths()
 {
 #ifdef __APPLE__
 	return _parent::GetStandardPaths();
@@ -395,9 +397,9 @@ wxStandardPaths& Pcsx2AppTraits::GetStandardPaths()
 }
 #endif
 
-wxAppTraits* Pcsx2App::CreateTraits()
+wxAppTraits *Pcsx2App::CreateTraits()
 {
-	return new Pcsx2AppTraits;
+    return new Pcsx2AppTraits;
 }
 
 // --------------------------------------------------------------------------------------
@@ -405,37 +407,39 @@ wxAppTraits* Pcsx2App::CreateTraits()
 // --------------------------------------------------------------------------------------
 void FramerateManager::Reset()
 {
-	//memzero( m_fpsqueue );
-	m_initpause = FramerateQueueDepth;
-	m_fpsqueue_writepos = 0;
+    //memzero( m_fpsqueue );
+    m_initpause = FramerateQueueDepth;
+    m_fpsqueue_writepos = 0;
 
-	for( uint i=0; i<FramerateQueueDepth; ++i )
-		m_fpsqueue[i] = GetCPUTicks();
+    for (uint i = 0; i < FramerateQueueDepth; ++i)
+        m_fpsqueue[i] = GetCPUTicks();
 
-	Resume();
+    Resume();
 }
 
-// 
+//
 void FramerateManager::Resume()
 {
 }
 
 void FramerateManager::DoFrame()
 {
-	m_fpsqueue_writepos = (m_fpsqueue_writepos + 1) % FramerateQueueDepth;
-	m_fpsqueue[m_fpsqueue_writepos] = GetCPUTicks();
+    m_fpsqueue_writepos = (m_fpsqueue_writepos + 1) % FramerateQueueDepth;
+    m_fpsqueue[m_fpsqueue_writepos] = GetCPUTicks();
 
-	// intentionally leave 1 on the counter here, since ultimately we want to divide the 
-	// final result (in GetFramerate() by QueueDepth-1.
-	if( m_initpause > 1 ) --m_initpause;
+    // intentionally leave 1 on the counter here, since ultimately we want to divide the
+    // final result (in GetFramerate() by QueueDepth-1.
+    if (m_initpause > 1)
+        --m_initpause;
 }
 
 double FramerateManager::GetFramerate() const
 {
-	if( m_initpause > (FramerateQueueDepth/2) ) return 0.0;
-	const u64 delta = m_fpsqueue[m_fpsqueue_writepos] - m_fpsqueue[(m_fpsqueue_writepos + 1) % FramerateQueueDepth];
-	const u32 ticks_per_frame = (u32)(delta / (FramerateQueueDepth-m_initpause));
-	return (double)GetTickFrequency() / (double)ticks_per_frame;
+    if (m_initpause > (FramerateQueueDepth / 2))
+        return 0.0;
+    const u64 delta = m_fpsqueue[m_fpsqueue_writepos] - m_fpsqueue[(m_fpsqueue_writepos + 1) % FramerateQueueDepth];
+    const u32 ticks_per_frame = (u32)(delta / (FramerateQueueDepth - m_initpause));
+    return (double)GetTickFrequency() / (double)ticks_per_frame;
 }
 
 // ----------------------------------------------------------------------------
@@ -443,7 +447,7 @@ double FramerateManager::GetFramerate() const
 // ----------------------------------------------------------------------------
 
 // LogicalVsync - Event received from the AppCoreThread (EEcore) for each vsync,
-// roughly 50/60 times a second when frame limiting is enabled, and up to 10,000 
+// roughly 50/60 times a second when frame limiting is enabled, and up to 10,000
 // times a second if not (ok, not quite, but you get the idea... I hope.)
 extern uint eecount_on_last_vdec;
 extern bool FMVstarted;
@@ -505,35 +509,32 @@ void Pcsx2App::LogicalVsync()
 	}
 }
 
-void Pcsx2App::OnEmuKeyDown( wxKeyEvent& evt )
+void Pcsx2App::OnEmuKeyDown(wxKeyEvent &evt)
 {
-	const GlobalCommandDescriptor* cmd = NULL;
-	if (GlobalAccels)
-	{
-		std::unordered_map<int, const GlobalCommandDescriptor*>::const_iterator iter(GlobalAccels->find(KeyAcceleratorCode(evt).val32));
-		if (iter != GlobalAccels->end())
-			cmd = iter->second;
-	}
+    const GlobalCommandDescriptor *cmd = NULL;
+    if (GlobalAccels) {
+        std::unordered_map<int, const GlobalCommandDescriptor *>::const_iterator iter(GlobalAccels->find(KeyAcceleratorCode(evt).val32));
+        if (iter != GlobalAccels->end())
+            cmd = iter->second;
+    }
 
-	if( cmd == NULL )
-	{
-		evt.Skip();
-		return;
-	}
+    if (cmd == NULL) {
+        evt.Skip();
+        return;
+    }
 
-	DbgCon.WriteLn( "(app) Invoking command: %s", cmd->Id );
-	cmd->Invoke();
+    DbgCon.WriteLn("(app) Invoking command: %s", cmd->Id);
+    cmd->Invoke();
 }
 
-void Pcsx2App::HandleEvent(wxEvtHandler* handler, wxEventFunction func, wxEvent& event) const
+void Pcsx2App::HandleEvent(wxEvtHandler *handler, wxEventFunction func, wxEvent &event) const
 {
-	const_cast<Pcsx2App*>(this)->HandleEvent( handler, func, event );
+    const_cast<Pcsx2App *>(this)->HandleEvent(handler, func, event);
 }
 
-void Pcsx2App::HandleEvent(wxEvtHandler* handler, wxEventFunction func, wxEvent& event)
+void Pcsx2App::HandleEvent(wxEvtHandler *handler, wxEventFunction func, wxEvent &event)
 {
-	try
-	{
+    try {
 #ifndef DISABLE_RECORDING
 		if (g_Conf->EmuOptions.EnableRecordingTools)
 		{
@@ -621,33 +622,30 @@ void Pcsx2App::HandleEvent(wxEvtHandler* handler, wxEventFunction func, wxEvent&
 
 		// Ignore does nothing...
 	}
-	#endif
-	// ----------------------------------------------------------------------------
-	catch( Exception::CancelEvent& ex )
-	{
-		Console.Warning( ex.FormatDiagnosticMessage() );
-	}
-	catch( Exception::RuntimeError& ex )
-	{
-		// Runtime errors which have been unhandled should still be safe to recover from,
-		// so lets issue a message to the user and then continue the message pump.
+#endif
+    // ----------------------------------------------------------------------------
+    catch (Exception::CancelEvent &ex) {
+        Console.Warning(ex.FormatDiagnosticMessage());
+    } catch (Exception::RuntimeError &ex) {
+        // Runtime errors which have been unhandled should still be safe to recover from,
+        // so lets issue a message to the user and then continue the message pump.
 
-		// Test case (Windows only, Linux has an uncaught exception for some
-		// reason): Run PSX ISO using fast boot
-		if (GSFrame* gsframe = wxGetApp().GetGsFramePtr())
-			gsframe->Close();
+        // Test case (Windows only, Linux has an uncaught exception for some
+        // reason): Run PSX ISO using fast boot
+        if (GSFrame *gsframe = wxGetApp().GetGsFramePtr())
+            gsframe->Close();
 
-		Console.Error( ex.FormatDiagnosticMessage() );
-		// I should probably figure out how to have the error message as well.
-		if (wxGetApp().HasGUI())
-			Msgbox::Alert( ex.FormatDisplayMessage() );
-	}
+        Console.Error(ex.FormatDiagnosticMessage());
+        // I should probably figure out how to have the error message as well.
+        if (wxGetApp().HasGUI())
+            Msgbox::Alert(ex.FormatDisplayMessage());
+    }
 }
 
 bool Pcsx2App::HasPendingSaves() const
 {
-	AffinityAssert_AllowFrom_MainUI();
-	return !!m_PendingSaves;
+    AffinityAssert_AllowFrom_MainUI();
+    return !!m_PendingSaves;
 }
 
 // A call to this method informs the app that there is a pending save operation that must be
@@ -655,8 +653,9 @@ bool Pcsx2App::HasPendingSaves() const
 // should be matched by a call to ClearPendingSave().
 void Pcsx2App::StartPendingSave()
 {
-	if( AppRpc_TryInvokeAsync(&Pcsx2App::StartPendingSave) ) return;
-	++m_PendingSaves;
+    if (AppRpc_TryInvokeAsync(&Pcsx2App::StartPendingSave))
+        return;
+    ++m_PendingSaves;
 }
 
 // If this method is called inappropriately then the entire pending save system will become
@@ -664,16 +663,16 @@ void Pcsx2App::StartPendingSave()
 // such calls are detected (though the detection is far from fool-proof).
 void Pcsx2App::ClearPendingSave()
 {
-	if( AppRpc_TryInvokeAsync(&Pcsx2App::ClearPendingSave) ) return;
+    if (AppRpc_TryInvokeAsync(&Pcsx2App::ClearPendingSave))
+        return;
 
-	--m_PendingSaves;
-	pxAssertDev( m_PendingSaves >= 0, "Pending saves count mismatch (pending count is less than 0)" );
+    --m_PendingSaves;
+    pxAssertDev(m_PendingSaves >= 0, "Pending saves count mismatch (pending count is less than 0)");
 
-	if( (m_PendingSaves == 0) && m_ScheduledTermination )
-	{
-		Console.WriteLn( "App: All pending saves completed; exiting!" );
-		Exit();
-	}
+    if ((m_PendingSaves == 0) && m_ScheduledTermination) {
+        Console.WriteLn("App: All pending saves completed; exiting!");
+        Exit();
+    }
 }
 
 // This method generates debug assertions if the MainFrame handle is NULL (typically
@@ -681,59 +680,59 @@ void Pcsx2App::ClearPendingSave()
 // closed).  In most cases you'll want to use HasMainFrame() to test for thread
 // validity first, or use GetMainFramePtr() and manually check for NULL (choice
 // is a matter of programmer preference).
-MainEmuFrame& Pcsx2App::GetMainFrame() const
+MainEmuFrame &Pcsx2App::GetMainFrame() const
 {
-	MainEmuFrame* mainFrame = GetMainFramePtr();
+    MainEmuFrame *mainFrame = GetMainFramePtr();
 
-	pxAssert(mainFrame != NULL);
-	pxAssert(((uptr)GetTopWindow()) == ((uptr)mainFrame));
-	return  *mainFrame;
+    pxAssert(mainFrame != NULL);
+    pxAssert(((uptr)GetTopWindow()) == ((uptr)mainFrame));
+    return *mainFrame;
 }
 
-GSFrame& Pcsx2App::GetGsFrame() const
+GSFrame &Pcsx2App::GetGsFrame() const
 {
-	GSFrame* gsFrame  = (GSFrame*)wxWindow::FindWindowById( m_id_GsFrame );
-	pxAssert(gsFrame != NULL);
-	return  *gsFrame;
+    GSFrame *gsFrame = (GSFrame *)wxWindow::FindWindowById(m_id_GsFrame);
+    pxAssert(gsFrame != NULL);
+    return *gsFrame;
 }
 
 void Pcsx2App::enterDebugMode()
 {
-	DisassemblyDialog* dlg = GetDisassemblyPtr();
-	if (dlg)
-		dlg->setDebugMode(true,false);
+    DisassemblyDialog *dlg = GetDisassemblyPtr();
+    if (dlg)
+        dlg->setDebugMode(true, false);
 }
-	
+
 void Pcsx2App::leaveDebugMode()
 {
-	DisassemblyDialog* dlg = GetDisassemblyPtr();
-	if (dlg)
-		dlg->setDebugMode(false,false);
+    DisassemblyDialog *dlg = GetDisassemblyPtr();
+    if (dlg)
+        dlg->setDebugMode(false, false);
 }
 
 void Pcsx2App::resetDebugger()
 {
-	DisassemblyDialog* dlg = GetDisassemblyPtr();
-	if (dlg)
-		dlg->reset();
+    DisassemblyDialog *dlg = GetDisassemblyPtr();
+    if (dlg)
+        dlg->reset();
 }
 
 void AppApplySettings( const AppConfig* oldconf )
 {
-	AffinityAssert_AllowFrom_MainUI();
+    AffinityAssert_AllowFrom_MainUI();
 
-	ScopedCoreThreadPause paused_core;
+    ScopedCoreThreadPause paused_core;
 
-	g_Conf->Folders.ApplyDefaults();
+    g_Conf->Folders.ApplyDefaults();
 
 	// Ensure existence of necessary documents folders.
 	// Other parts of PCSX2 rely on them.
 
-	g_Conf->Folders.MemoryCards.Mkdir();
-	g_Conf->Folders.Savestates.Mkdir();
-	g_Conf->Folders.Snapshots.Mkdir();
-	g_Conf->Folders.Cheats.Mkdir();
-	g_Conf->Folders.CheatsWS.Mkdir();
+    g_Conf->Folders.MemoryCards.Mkdir();
+    g_Conf->Folders.Savestates.Mkdir();
+    g_Conf->Folders.Snapshots.Mkdir();
+    g_Conf->Folders.Cheats.Mkdir();
+    g_Conf->Folders.CheatsWS.Mkdir();
 
 	RelocateLogfile();
 
@@ -743,15 +742,15 @@ void AppApplySettings( const AppConfig* oldconf )
 		i18n_SetLanguage( g_Conf->LanguageId, g_Conf->LanguageCode );
 	}
 
-	// Update the compression attribute on the Memcards folder.
-	// Memcards generally compress very well via NTFS compression.
+    // Update the compression attribute on the Memcards folder.
+    // Memcards generally compress very well via NTFS compression.
 
 	#ifdef __WXMSW__
 	NTFS_CompressFile( g_Conf->Folders.MemoryCards.ToString(), g_Conf->EmuOptions.McdCompressNTFS );
 	#endif
 	sApp.DispatchEvent( AppStatus_SettingsApplied );
 
-	paused_core.AllowResume();
+    paused_core.AllowResume();
 }
 
 // Invokes the specified Pcsx2App method, or posts the method to the main thread if the calling
@@ -765,15 +764,16 @@ void AppApplySettings( const AppConfig* oldconf )
 //   FALSE if the method was not posted to the main thread (meaning this IS the main thread!)
 //   TRUE if the method was posted.
 //
-bool Pcsx2App::AppRpc_TryInvoke( FnPtr_Pcsx2App method )
+bool Pcsx2App::AppRpc_TryInvoke(FnPtr_Pcsx2App method)
 {
-	if( wxThread::IsMain() ) return false;
+    if (wxThread::IsMain())
+        return false;
 
-	SynchronousActionState sync;
-	PostEvent( Pcsx2AppMethodEvent( method, sync ) );
-	sync.WaitForResult();
+    SynchronousActionState sync;
+    PostEvent(Pcsx2AppMethodEvent(method, sync));
+    sync.WaitForResult();
 
-	return true;
+    return true;
 }
 
 // Invokes the specified Pcsx2App method, or posts the method to the main thread if the calling
@@ -787,32 +787,34 @@ bool Pcsx2App::AppRpc_TryInvoke( FnPtr_Pcsx2App method )
 //   FALSE if the method was not posted to the main thread (meaning this IS the main thread!)
 //   TRUE if the method was posted.
 //
-bool Pcsx2App::AppRpc_TryInvokeAsync( FnPtr_Pcsx2App method )
+bool Pcsx2App::AppRpc_TryInvokeAsync(FnPtr_Pcsx2App method)
 {
-	if( wxThread::IsMain() ) return false;
-	PostEvent( Pcsx2AppMethodEvent( method ) );
-	return true;
+    if (wxThread::IsMain())
+        return false;
+    PostEvent(Pcsx2AppMethodEvent(method));
+    return true;
 }
 
 // Posts a method to the main thread; non-blocking.  Post occurs even when called from the
 // main thread.
-void Pcsx2App::PostAppMethod( FnPtr_Pcsx2App method )
+void Pcsx2App::PostAppMethod(FnPtr_Pcsx2App method)
 {
-	PostEvent( Pcsx2AppMethodEvent( method ) );
+    PostEvent(Pcsx2AppMethodEvent(method));
 }
 
 // Posts a method to the main thread; non-blocking.  Post occurs even when called from the
 // main thread.
-void Pcsx2App::PostIdleAppMethod( FnPtr_Pcsx2App method )
+void Pcsx2App::PostIdleAppMethod(FnPtr_Pcsx2App method)
 {
-	Pcsx2AppMethodEvent evt( method );
-	AddIdleEvent( evt );
+    Pcsx2AppMethodEvent evt(method);
+    AddIdleEvent(evt);
 }
 
-SysMainMemory& Pcsx2App::GetVmReserve()
+SysMainMemory &Pcsx2App::GetVmReserve()
 {
-	if (!m_VmReserve) m_VmReserve = std::unique_ptr<SysMainMemory>(new SysMainMemory());
-	return *m_VmReserve;
+    if (!m_VmReserve)
+        m_VmReserve = std::unique_ptr<SysMainMemory>(new SysMainMemory());
+    return *m_VmReserve;
 }
 
 void Pcsx2App::OpenGsPanel()
@@ -870,30 +872,30 @@ void Pcsx2App::OpenGsPanel()
 	// Unfortunately there is a race condition between gui and gs threads when you called the
 	// GDK_WINDOW_* macro. To be safe I think it is best to do here. -- Gregory
 
-	// GTK_PIZZA is an internal interface of wx, therefore they decide to
-	// remove it on wx 3. I tryed to replace it with gtk_widget_get_window but
-	// unfortunately it creates a gray box in the middle of the window on some
-	// users.
+    // GTK_PIZZA is an internal interface of wx, therefore they decide to
+    // remove it on wx 3. I tryed to replace it with gtk_widget_get_window but
+    // unfortunately it creates a gray box in the middle of the window on some
+    // users.
 
-	GtkWidget *child_window = GTK_WIDGET(gsFrame->GetViewport()->GetHandle());
+    GtkWidget *child_window = GTK_WIDGET(gsFrame->GetViewport()->GetHandle());
 
-	gtk_widget_realize(child_window); // create the widget to allow to use GDK_WINDOW_* macro
-	gtk_widget_set_double_buffered(child_window, false); // Disable the widget double buffer, you will use the opengl one
+    gtk_widget_realize(child_window);                    // create the widget to allow to use GDK_WINDOW_* macro
+    gtk_widget_set_double_buffered(child_window, false); // Disable the widget double buffer, you will use the opengl one
 
-	GdkWindow* draw_window = gtk_widget_get_window(child_window);
+    GdkWindow *draw_window = gtk_widget_get_window(child_window);
 
 #if GTK_MAJOR_VERSION < 3
-	Window Xwindow = GDK_WINDOW_XWINDOW(draw_window);
+    Window Xwindow = GDK_WINDOW_XWINDOW(draw_window);
 #else
-	Window Xwindow = GDK_WINDOW_XID(draw_window);
+    Window Xwindow = GDK_WINDOW_XID(draw_window);
 #endif
-	Display* XDisplay = GDK_WINDOW_XDISPLAY(draw_window);
+    Display *XDisplay = GDK_WINDOW_XDISPLAY(draw_window);
 
-	pDsp[0] = (uptr)XDisplay;
-	pDsp[1] = (uptr)Xwindow;
+    pDsp[0] = (uptr)XDisplay;
+    pDsp[1] = (uptr)Xwindow;
 #else
-	pDsp[0] = (uptr)gsFrame->GetViewport()->GetHandle();
-	pDsp[1] = NULL;
+    pDsp[0] = (uptr)gsFrame->GetViewport()->GetHandle();
+    pDsp[1] = NULL;
 #endif
 
 	gsFrame->ShowFullScreen( g_Conf->GSWindow.IsFullscreen );
@@ -921,7 +923,7 @@ void Pcsx2App::OnGsFrameClosed(wxWindowID id)
 	if ((m_id_GsFrame == wxID_ANY) || (m_id_GsFrame != id))
 		return;
 
-	CoreThread.Suspend();
+    CoreThread.Suspend();
 
 	if (!m_UseGUI)
 	{
@@ -937,16 +939,17 @@ void Pcsx2App::OnGsFrameClosed(wxWindowID id)
 #endif
 }
 
-void Pcsx2App::OnProgramLogClosed( wxWindowID id )
+void Pcsx2App::OnProgramLogClosed(wxWindowID id)
 {
-	if( (m_id_ProgramLogBox == wxID_ANY) || (m_id_ProgramLogBox != id) ) return;
+    if ((m_id_ProgramLogBox == wxID_ANY) || (m_id_ProgramLogBox != id))
+        return;
 
-	ScopedLock lock( m_mtx_ProgramLog );
-	m_id_ProgramLogBox = wxID_ANY;
-	DisableWindowLogging();
+    ScopedLock lock(m_mtx_ProgramLog);
+    m_id_ProgramLogBox = wxID_ANY;
+    DisableWindowLogging();
 }
 
-void Pcsx2App::OnMainFrameClosed( wxWindowID id )
+void Pcsx2App::OnMainFrameClosed(wxWindowID id)
 {
 #ifndef DISABLE_RECORDING
 	if (g_InputRecording.IsActive())
@@ -955,10 +958,11 @@ void Pcsx2App::OnMainFrameClosed( wxWindowID id )
 	}
 #endif
 
-	// Nothing threaded depends on the mainframe (yet) -- it all passes through the main wxApp
-	// message handler.  But that might change in the future.
-	if( m_id_MainFrame != id ) return;
-	m_id_MainFrame = wxID_ANY;
+    // Nothing threaded depends on the mainframe (yet) -- it all passes through the main wxApp
+    // message handler.  But that might change in the future.
+    if (m_id_MainFrame != id)
+        return;
+    m_id_MainFrame = wxID_ANY;
 }
 
 // --------------------------------------------------------------------------------------
@@ -967,44 +971,44 @@ void Pcsx2App::OnMainFrameClosed( wxWindowID id )
 class SysExecEvent_Execute : public SysExecEvent
 {
 protected:
-	bool				m_UseCDVDsrc;
-	bool				m_UseELFOverride;
-	CDVD_SourceType		m_cdvdsrc_type;
-	wxString			m_elf_override;
+    bool m_UseCDVDsrc;
+    bool m_UseELFOverride;
+    CDVD_SourceType m_cdvdsrc_type;
+    wxString m_elf_override;
 
 public:
-	virtual ~SysExecEvent_Execute() = default;
-	SysExecEvent_Execute* Clone() const { return new SysExecEvent_Execute(*this); }
+    virtual ~SysExecEvent_Execute() = default;
+    SysExecEvent_Execute *Clone() const { return new SysExecEvent_Execute(*this); }
 
-	wxString GetEventName() const
-	{
-		return L"SysExecute";
-	}
+    wxString GetEventName() const
+    {
+        return L"SysExecute";
+    }
 
-	wxString GetEventMessage() const
-	{
-		return _("Executing PS2 Virtual Machine...");
-	}
-	
-	SysExecEvent_Execute()
-		: m_UseCDVDsrc(false)
-		, m_UseELFOverride(false)
-		, m_cdvdsrc_type(CDVD_SourceType::Iso)
-	{
-	}
+    wxString GetEventMessage() const
+    {
+        return _("Executing PS2 Virtual Machine...");
+    }
 
-	SysExecEvent_Execute( CDVD_SourceType srctype, const wxString& elf_override )
-		: m_UseCDVDsrc(true)
-		, m_UseELFOverride(true)
-		, m_cdvdsrc_type(srctype)
-		, m_elf_override( elf_override )
-	{
-	}
+    SysExecEvent_Execute()
+        : m_UseCDVDsrc(false)
+        , m_UseELFOverride(false)
+        , m_cdvdsrc_type(CDVD_SourceType::Iso)
+    {
+    }
+
+    SysExecEvent_Execute(CDVD_SourceType srctype, const wxString &elf_override)
+        : m_UseCDVDsrc(true)
+        , m_UseELFOverride(true)
+        , m_cdvdsrc_type(srctype)
+        , m_elf_override(elf_override)
+    {
+    }
 
 protected:
-	void InvokeEvent()
-	{
-		wxGetApp().ProcessMethod( AppSaveSettings );
+    void InvokeEvent()
+    {
+        wxGetApp().ProcessMethod(AppSaveSettings);
 
 		DbgCon.WriteLn( Color_Gray, "(SysExecute) received." );
 
@@ -1023,24 +1027,24 @@ protected:
 		else if( CDVD == NULL )
 			CDVDsys_ChangeSource(CDVD_SourceType::NoDisc);
 
-		if( m_UseELFOverride && !CoreThread.HasActiveMachine() )
-			CoreThread.SetElfOverride( m_elf_override );
+        if (m_UseELFOverride && !CoreThread.HasActiveMachine())
+            CoreThread.SetElfOverride(m_elf_override);
 
-		CoreThread.Resume();
-	}
+        CoreThread.Resume();
+    }
 };
 
 // This command performs a full closure of any existing VM state and starts a
 // fresh VM with the requested sources.
 void Pcsx2App::SysExecute()
 {
-	SysExecutorThread.PostEvent( new SysExecEvent_Execute() );
+    SysExecutorThread.PostEvent(new SysExecEvent_Execute());
 }
 
 // Executes the specified cdvd source and optional elf file.  This command performs a
 // full closure of any existing VM state and starts a fresh VM with the requested
 // sources.
-void Pcsx2App::SysExecute( CDVD_SourceType cdvdsrc, const wxString& elf_override )
+void Pcsx2App::SysExecute(CDVD_SourceType cdvdsrc, const wxString &elf_override)
 {
 	SysExecutorThread.PostEvent( new SysExecEvent_Execute(cdvdsrc, elf_override.ToStdString()) );
 #ifndef DISABLE_RECORDING
@@ -1058,21 +1062,22 @@ void Pcsx2App::SysExecute( CDVD_SourceType cdvdsrc, const wxString& elf_override
 // state (such as saving it), you *must* suspend the Corethread first!
 __fi bool SysHasValidState()
 {
-	return CoreThread.HasActiveMachine();
+    return CoreThread.HasActiveMachine();
 }
 
 // Writes text to console and updates the window status bar and/or HUD or whateverness.
 // FIXME: This probably isn't thread safe. >_<
-void SysStatus( const wxString& text )
+void SysStatus(const wxString &text)
 {
-	// mirror output to the console!
-	Console.WriteLn( WX_STR(text) );
-	sMainFrame.SetStatusText( text );
+    // mirror output to the console!
+    Console.WriteLn(WX_STR(text));
+    sMainFrame.SetStatusText(text);
 }
 
 // Applies a new active iso source file
-void SysUpdateIsoSrcFile( const wxString& newIsoFile )
+void SysUpdateIsoSrcFile(const wxString &newIsoFile)
 {
+    VanguardClientUnmanaged::LOAD_GAME_START(newIsoFile.ToStdString());
 	g_Conf->CurrentIso = newIsoFile;
 	sMainFrame.UpdateStatusBar();
 	sMainFrame.UpdateCdvdSrcSelection();
@@ -1087,7 +1092,7 @@ void SysUpdateDiscSrcDrive( const wxString& newDiscDrive )
 
 bool HasMainFrame()
 {
-	return wxTheApp && wxGetApp().HasMainFrame();
+    return wxTheApp && wxGetApp().HasMainFrame();
 }
 
 // This method generates debug assertions if either the wxApp or MainFrame handles are
@@ -1095,25 +1100,25 @@ bool HasMainFrame()
 // frame has been closed).  In most cases you'll want to use HasMainFrame() to test
 // for gui validity first, or use GetMainFramePtr() and manually check for NULL (choice
 // is a matter of programmer preference).
-MainEmuFrame& GetMainFrame()
+MainEmuFrame &GetMainFrame()
 {
-	return wxGetApp().GetMainFrame();
+    return wxGetApp().GetMainFrame();
 }
 
 // Returns a pointer to the main frame of the GUI (frame may be hidden from view), or
 // NULL if no main frame exists (NoGUI mode and/or the frame has been destroyed).  If
 // the wxApp is NULL then this will also return NULL.
-MainEmuFrame* GetMainFramePtr()
+MainEmuFrame *GetMainFramePtr()
 {
-	return wxTheApp ? wxGetApp().GetMainFramePtr() : NULL;
+    return wxTheApp ? wxGetApp().GetMainFramePtr() : NULL;
 }
 
-SysMainMemory& GetVmMemory()
+SysMainMemory &GetVmMemory()
 {
-	return wxGetApp().GetVmReserve();
+    return wxGetApp().GetVmReserve();
 }
 
-SysCpuProviderPack& GetCpuProviders()
+SysCpuProviderPack &GetCpuProviders()
 {
-	return *wxGetApp().m_CpuProviders;
+    return *wxGetApp().m_CpuProviders;
 }

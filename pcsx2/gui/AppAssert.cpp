@@ -121,7 +121,7 @@ void Pcsx2App::OnAssertFailure( const wxChar *file, int line, const wxChar *func
 bool AppDoAssert( const DiagnosticOrigin& origin, const wxChar *msg )
 {
 	// Used to allow the user to suppress future assertions during this application's session.
-	static bool disableAsserts = false;
+	static bool disableAsserts = true; //Vanguard - Disable asserts
 	if( disableAsserts ) return false;
 
 #if wxUSE_STACKWALKER

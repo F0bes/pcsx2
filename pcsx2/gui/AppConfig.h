@@ -272,6 +272,7 @@ public:
 
 
 	wxString				CurrentIso;
+    wxString				CurrentBlockdump;
 	wxString				CurrentELF;
 	CDVD_SourceType			CdvdSource;
 

@@ -37,6 +37,7 @@
 
 // renderswitch - tells GS to go into dx9 sw if "renderswitch" is set.
 bool renderswitch = false;
+uint renderswitch_delay = 0;
 
 static bool g_Pcsx2Recording = false; // true if recording video and sound
 

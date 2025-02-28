@@ -124,5 +124,4 @@ private:
 
 	wxString RawPadBytesToString(int start, int end);
 };
-
 #endif

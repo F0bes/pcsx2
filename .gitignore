@@ -111,6 +111,18 @@ oprofile_data/
 !/pcsx2/gui/Resources/EmbeddedImage.h
 /tools/bin
 .vs
+.vscode
 
+/pcsx2/windows/VCprojects/GSdx_opengl_debug_hw.txt
+/pcsx2/windows/VCprojects/GSdx_opengl_debug_sw.txt
+/bin/cheats_ws
+/bin/cheats
 /out/build/x64-Debug (default)
+/RTCV
+bin/NLog.xml
 CMakeSettings.json
+3rdparty/yaml-cpp/yaml-cpp/
+3rdparty/wil/
+3rdparty/libchdr/libchdr/
+3rdparty/gtest/
+3rdparty/fmt/fmt/

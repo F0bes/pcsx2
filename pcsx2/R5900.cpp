@@ -40,6 +40,8 @@
 #include "DebugTools/Breakpoints.h"
 #include "R5900OpcodeTables.h"
 
+#include "Vanguard/VanguardClient.h"
+
 using namespace R5900;	// for R5900 disasm tools
 
 s32 EEsCycle;		// used to sync the IOP to the EE
@@ -614,6 +616,8 @@ void __fastcall eeloadHook()
 
 	wxString discelf;
 	int disctype = GetPS2ElfName(discelf);
+    
+    VanguardClientUnmanaged::LOAD_GAME_DONE();
 
 	std::string elfname;
 	int argc = cpuRegs.GPR.n.a0.SD[0];

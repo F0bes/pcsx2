@@ -30,6 +30,7 @@
 
 #include "svnrev.h"
 #include "Saveslots.h"
+#include "Vanguard/VanguardClientInitializer.h"
 
 #ifndef DISABLE_RECORDING
 #include "Recording/InputRecording.h"
@@ -690,6 +691,8 @@ MainEmuFrame::MainEmuFrame(wxWindow* parent, const wxString& title)
 
 	ApplyCoreStatus();
 	ApplySettings();
+
+	VanguardClientInitializer::Initialize();
 }
 
 MainEmuFrame::~MainEmuFrame()

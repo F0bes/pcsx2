@@ -26,6 +26,8 @@
 
 #define NOMINMAX		// Disables other libs inclusion of their own min/max macros (we use std instead)
 
+#include "baseclasses/streams.h"
+
 //////////////////////////////////////////////////////////////////////////////////////////
 // Welcome wxWidgets to the party!
 

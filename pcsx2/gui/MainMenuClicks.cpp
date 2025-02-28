@@ -37,6 +37,7 @@
 #include "Dialogs/ConfigurationDialog.h"
 #include "Debugger/DisassemblyDialog.h"
 
+#include "Vanguard/VanguardClient.h"
 #include "common/IniInterface.h"
 
 #include "fmt/core.h"
@@ -861,6 +862,7 @@ void MainEmuFrame::Menu_SysShutdown_Click(wxCommandEvent& event)
 		UI_DisableSysShutdown();
 		Console.SetTitle("PCSX2 Program Log");
 		CoreThread.Reset();
+    	VanguardClientUnmanaged::GAME_CLOSED();
 	}
 }
 

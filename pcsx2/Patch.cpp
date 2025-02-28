@@ -27,6 +27,7 @@
 #include <wx/dir.h>
 #include <wx/txtstrm.h>
 #include <wx/zipstrm.h>
+#include "Vanguard/VanguardClient.h"
 #include <wx/wfstream.h>
 #include <PathDefs.h>
 
@@ -351,6 +352,9 @@ namespace PatchFunc
 // This is for applying patches directly to memory
 void ApplyLoadedPatches(patch_place_type place)
 {
+
+    VanguardClientUnmanaged::CORE_STEP();
+
 	for (auto& i : Patch)
 	{
 		if (i.placetopatch == place)
