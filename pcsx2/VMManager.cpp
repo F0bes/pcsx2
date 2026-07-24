@@ -2673,7 +2673,11 @@ void VMManager::InitializeCPUProviders()
 	vu1Thread.Open();
 #endif
 
+#ifdef ENABLE_VIF_IR
+	VifUnpack_Init();
+#else
 	VifUnpackSSE_Init();
+#endif
 }
 
 void VMManager::ShutdownCPUProviders()

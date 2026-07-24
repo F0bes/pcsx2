@@ -13,7 +13,11 @@ typedef void (*nVifrecCall)(uptr dest, uptr src);
 extern void _nVifUnpack(int idx, const u8* data, uint mode, bool isFill);
 extern void dVifReset(int idx);
 extern void dVifRelease(int idx);
-extern void VifUnpackSSE_Init();
+#ifdef ENABLE_VIF_IR
+	extern void VifUnpack_Init();
+#else
+	extern void VifUnpackSSE_Init();
+#endif
 
 _vifT extern void dVifUnpack(const u8* data, bool isFill);
 

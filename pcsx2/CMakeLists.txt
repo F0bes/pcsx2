@@ -1003,9 +1003,14 @@ set(pcsx2x86Sources
 	x86/ix86-32/iR5900Shift.cpp
 	x86/ix86-32/iR5900Templates.cpp
 	x86/ix86-32/recVTLB.cpp
-	x86/Vif_Dynarec.cpp
-	x86/Vif_UnpackSSE.cpp
 	)
+
+if (!USE_VIF_IR)
+	list(APPEND pcsx2x86Sources
+		x86/Vif_Dynarec.cpp
+		x86/Vif_UnpackSSE.cpp
+	)
+endif()
 
 # x86 headers
 set(pcsx2x86Headers
@@ -1043,10 +1048,15 @@ set(pcsx2x86Headers
 	x86/microVU_Profiler.h
 	x86/microVU_Tables.inl
 	x86/microVU_Upper.inl
-	x86/newVif.h
-	x86/Vif_UnpackSSE.h
 	x86/R5900_Profiler.h
 	)
+
+if (!USE_VIF_IR)
+	list(APPEND pcsx2x86Sources
+		x86/newVif.h
+		x86/Vif_UnpackSSE.h
+	)
+endif()
 
 # ARM64
 set(pcsx2arm64Sources
@@ -1059,6 +1069,20 @@ set(pcsx2arm64Sources
 set(pcsx2arm64Headers
 	arm64/AsmHelpers.h
 )
+
+if (USE_VIF_IR)
+	set(pcsx2sljitSources
+		sljit/Vif_Dynarec.cpp
+		sljit/Vif_Unpack.cpp
+		sljit/sljitHelpers.cpp
+	)
+
+	set(pcsx2sljitHeaders
+		sljit/Vif_Unpack.h
+		sljit/sljitHelpers.h
+	)
+endif()
+
 
 # These ones benefit a lot from LTO
 set(pcsx2LTOSources
@@ -1079,6 +1103,17 @@ elseif(ARCH_ARM64)
 	list(APPEND pcsx2LTOSources ${pcsx2arm64Sources} ${pcsx2arm64Headers})
 	target_link_libraries(PCSX2_FLAGS INTERFACE vixl)
 endif()
+
+
+if(USE_VIF_IR)
+	list(APPEND pcsx2LTOSources ${pcsx2sljitSources} ${pcsx2sljitHeaders})
+	if(TARGET sljit)
+		target_link_libraries(PCSX2_FLAGS INTERFACE sljit)
+	elseif(TARGET sljit::sljit)
+		target_link_libraries(PCSX2_FLAGS INTERFACE sljit::sljit)
+	endif()
+endif()
+
 
 if(LTO_PCSX2_CORE)
 	add_library(PCSX2_LTO ${pcsx2LTOSources})

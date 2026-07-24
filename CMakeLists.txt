@@ -45,6 +45,11 @@ write_svnrev_h()
 # make common
 add_subdirectory(common)
 
+# vif IR
+if(USE_VIF_IR)
+	add_subdirectory(3rdparty/sljit)
+endif()
+
 # make pcsx2
 add_subdirectory(pcsx2)
 

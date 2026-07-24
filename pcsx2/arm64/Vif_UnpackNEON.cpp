@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2002-2026 PCSX2 Dev Team
 // SPDX-License-Identifier: GPL-3.0
 
-#include "Vif_UnpackNEON.h"
+#include "Vif_Unpack.h"
 #include "common/Perf.h"
 
 namespace a64 = vixl::aarch64;

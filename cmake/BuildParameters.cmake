@@ -14,7 +14,7 @@ option(USE_VTUNE "Plug VTUNE to profile GS JIT.")
 option(PACKAGE_MODE "Use this option to ease packaging of PCSX2 (developer/distribution option)")
 option(BUNDLE_EMOJI_FONT "Bundles Noto Color Emoji for systems whose system emoji font isn't usable by freetype" ON)
 option(POSITION_INDEPENDENT_CODE "Generate position-independent code. It is recommended that you leave this on." ON)
-
+option(USE_VIF_IR "Use sljit VIF IR" ON)
 #-------------------------------------------------------------------------------
 # Graphical option
 #-------------------------------------------------------------------------------
@@ -220,6 +220,10 @@ endif()
 
 if(USE_VTUNE)
 	list(APPEND PCSX2_DEFS ENABLE_VTUNE)
+endif()
+
+if(USE_VIF_IR)
+	list(APPEND PCSX2_DEFS ENABLE_VIF_IR)
 endif()
 
 if(USE_OPENGL)
