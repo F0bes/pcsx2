@@ -9,6 +9,7 @@
 // under the GPL license. However, they have been heavily rewritten for PCSX2 usage.
 // The original author's copyright statement is included above for completeness sake.
 
+#include "common/Assertions.h"
 #include "IPU/IPU.h"
 #include "IPU/IPUdma.h"
 #include "IPU/yuv2rgb.h"
@@ -1401,6 +1402,21 @@ __fi static bool mpeg2_slice()
 					vst1q_u8((uint8_t*)d + 16, vzip2q_u8(woot1, zeroreg));
 					vst1q_u8((uint8_t*)d + 32, vzip1q_u8(woot2, zeroreg));
 					vst1q_u8((uint8_t*)d + 48, vzip2q_u8(woot2, zeroreg));
+					s += 32;
+					d += 32;
+				}
+#elif defined (ARCH_LOONGARCH64)
+				__m128i zeroreg = __lsx_vldi(0);
+
+				for (uint i = 0; i < (256 + 64 + 64) / 32; ++i)
+				{
+					//*d++ = *s++;
+					__m128i woot1 = __lsx_vld((uint8_t*)s, 0);
+					__m128i woot2 = __lsx_vld((uint8_t*)s, 16);
+					__lsx_vst(__lsx_vilvl_b(zeroreg, woot1), (uint8_t*)d, 0);
+					__lsx_vst(__lsx_vilvh_b(zeroreg, woot1), (uint8_t*)d, 16);
+					__lsx_vst( __lsx_vilvl_b(zeroreg, woot2), (uint8_t*)d, 32);
+					__lsx_vst( __lsx_vilvh_b(zeroreg, woot2), (uint8_t*)d, 48);
 					s += 32;
 					d += 32;
 				}

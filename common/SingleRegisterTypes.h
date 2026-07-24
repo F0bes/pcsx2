@@ -14,6 +14,7 @@
 #include "VectorIntrin.h"
 
 #include <cstring>
+#include <lsxintrin.h>
 
 #if defined(ARCH_X86)
 
@@ -188,6 +189,90 @@ using r128 = uint32x4_t;
 	return ret;
 }
 
+#elif defined(ARCH_LOONGARCH64)
+	using r128 = __m128i;
+
+	#define RETURNS_R128 r128
+	#define TAKES_R128
+
+	[[maybe_unused]] __fi static void CopyQWC(void* dest, const void* src)
+	{
+		__lsx_vst(__lsx_vld(static_cast<const void*>(src), 0), static_cast<void*>(dest), 0);
+	}
+
+	[[maybe_unused]] __fi static void ZeroQWC(void* dest)
+	{
+		__lsx_vst(__lsx_vldi(0), static_cast<void*>(dest),0);
+	}
+
+	[[maybe_unused]] __fi static void ZeroQWC(u128& dest)
+	{
+		__lsx_vst(__lsx_vldi(0), &dest._u8[0], 0);
+	}
+
+
+	[[maybe_unused]] __fi static r128 r128_load(const void* ptr)
+	{
+		return __lsx_vld(reinterpret_cast<const uint32_t*>(ptr),0);
+	}
+
+	[[maybe_unused]] __fi static void r128_store(void* ptr, r128 value)
+	{
+		return __lsx_vst(value, reinterpret_cast<uint32_t*>(ptr), 0);
+	}
+
+	[[maybe_unused]] __fi static void r128_store_unaligned(void* ptr, r128 value)
+	{
+		return __lsx_vst(value, reinterpret_cast<uint32_t*>(ptr), 0);
+	}
+
+	[[maybe_unused]] __fi static r128 r128_zero()
+	{
+		return __lsx_vldi(0);
+	}
+
+	/// Expects that r64 came from r64-handling code, and not from a recompiler or something
+	[[maybe_unused]] __fi static r128 r128_from_u64_dup(u64 val)
+	{
+		return __lsx_vreplgr2vr_d(val);
+	}
+	[[maybe_unused]] __fi static r128 r128_from_u64_zext(u64 val)
+	{
+		return __lsx_vinsgr2vr_d(__lsx_vldi(0), val, 0);
+	}
+
+	[[maybe_unused]] __fi static r128 r128_from_u32_dup(u32 val)
+	{
+		return __lsx_vreplgr2vr_w(val);
+	}
+
+	[[maybe_unused]] __fi static r128 r128_from_u32x4(u32 lo0, u32 lo1, u32 hi0, u32 hi1)
+	{
+		const u32 values[4] = {lo0, lo1, hi0, hi1};
+		return __lsx_vld(values, 0);
+	}
+
+	[[maybe_unused]] __fi static r128 r128_from_u128(const u128& u)
+	{
+		return __lsx_vld(reinterpret_cast<const uint32_t*>(u._u32), 0);
+	}
+
+	[[maybe_unused]] __fi static u32 r128_to_u32(r128 val)
+	{
+		return __lsx_vpickve2gr_wu(val, 0);
+	}
+
+	[[maybe_unused]] __fi static u64 r128_to_u64(r128 val)
+	{
+		return __lsx_vpickve2gr_du(val, 0);
+	}
+
+	[[maybe_unused]] __fi static u128 r128_to_u128(r128 val)
+	{
+		alignas(16) u128 ret;
+		__lsx_vst(val, ret._u32, 0);
+		return ret;
+	}
 #else
 
 #error Unknown architecture.

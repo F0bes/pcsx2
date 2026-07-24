@@ -189,6 +189,89 @@ struct FPControlRegister
 
 	__fi constexpr bool operator==(const FPControlRegister& rhs) const { return bitmask == rhs.bitmask; }
 	__fi constexpr bool operator!=(const FPControlRegister& rhs) const { return bitmask != rhs.bitmask; }
+#elif defined(ARCH_LOONGARCH64)
+	u32 bitmask;
+
+	static constexpr u32 RMODE_SHIFT = 8;
+	static constexpr u32 RMODE_MASK  = 0x3;
+	static constexpr u32 EXCEPTION_MASK = 0x1F;
+
+	__fi static FPControlRegister GetCurrent()
+	{
+		u32 value;
+		asm volatile(
+			"movfcsr2gr %0, $fcsr0"
+			: "=r"(value));
+		return { value };
+	}
+
+	__fi static void SetCurrent(FPControlRegister value)
+	{
+		asm volatile(
+			"movgr2fcsr $fcsr0, %0"
+			:
+			: "r"(value.bitmask));
+	}
+
+	__fi static constexpr FPControlRegister GetDefault()
+	{
+		return {0};
+	}
+
+	__fi constexpr FPControlRegister& EnableExceptions()
+	{
+		bitmask |= EXCEPTION_MASK;
+		return *this;
+	}
+
+	__fi constexpr FPControlRegister& DisableExceptions()
+	{
+		bitmask &= ~EXCEPTION_MASK;
+		return *this;
+	}
+
+	__fi constexpr FPRoundMode GetRoundMode() const
+	{
+		return static_cast<FPRoundMode>(
+			(bitmask >> RMODE_SHIFT) & RMODE_MASK);
+	}
+
+	__fi constexpr FPControlRegister& SetRoundMode(FPRoundMode mode)
+	{
+		bitmask &= ~(RMODE_MASK << RMODE_SHIFT);
+		bitmask |= (static_cast<u32>(mode) & RMODE_MASK) << RMODE_SHIFT;
+		return *this;
+	}
+
+	__fi constexpr bool GetDenormalsAreZero() const
+	{
+		return false;
+	}
+
+	__fi constexpr FPControlRegister& SetDenormalsAreZero(bool)
+	{
+		return *this;
+	}
+
+	__fi constexpr bool GetFlushToZero() const
+	{
+		return false;
+	}
+
+	__fi constexpr FPControlRegister& SetFlushToZero(bool)
+	{
+		return *this;
+	}
+
+	__fi constexpr bool operator==(const FPControlRegister& rhs) const
+	{
+		return bitmask == rhs.bitmask;
+	}
+
+	__fi constexpr bool operator!=(const FPControlRegister& rhs) const
+	{
+		return bitmask != rhs.bitmask;
+	}
 #else
 #error Unknown architecture.
 #endif

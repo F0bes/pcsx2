@@ -213,7 +213,8 @@ bool SaveStateBase::FreezeInternals(Error* error)
 	okay = okay && memFreeze(error);
 	okay = okay && gsFreeze();
 	okay = okay && vuMicroFreeze();
-	okay = okay && vuJITFreeze();
+	pxFail("Not impl");
+	//okay = okay && vuJITFreeze();
 	okay = okay && vif0Freeze();
 	okay = okay && vif1Freeze();
 	okay = okay && sifFreeze();

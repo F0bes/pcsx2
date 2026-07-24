@@ -14,6 +14,11 @@
 #include "GS/Renderers/SW/GSDrawScanlineCodeGenerator.arm64.h"
 #endif
 
+#ifdef ARCH_LOONGARCH64
+#include "GS/Renderers/SW/GSSetupPrimCodeGenerator.loongarch64.h"
+#include "GS/Renderers/SW/GSDrawScanlineCodeGenerator.loongarch64.h"
+#endif
+
 struct GSScanlineLocalData;
 
 MULTI_ISA_UNSHARED_START

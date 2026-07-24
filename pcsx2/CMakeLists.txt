@@ -480,6 +480,11 @@ elseif(ARCH_ARM64)
 		GS/Renderers/SW/GSDrawScanlineCodeGenerator.arm64.cpp
 		GS/Renderers/SW/GSSetupPrimCodeGenerator.arm64.cpp
 	)
+elseif(ARCH_LOONGARCH64)
+	list(APPEND pcsx2GSSourcesUnshared
+		GS/Renderers/SW/GSDrawScanlineCodeGenerator.loongarch64.cpp
+		GS/Renderers/SW/GSSetupPrimCodeGenerator.loongarch64.cpp
+	)
 endif()
 
 set(pcsx2GSSources
@@ -576,6 +581,11 @@ elseif(ARCH_ARM64)
 	list(APPEND pcsx2GSHeaders
 		GS/GSVector4_arm64.h
 		GS/GSVector4i_arm64.h
+	)
+elseif(ARCH_LOONGARCH64)
+	list(APPEND pcsx2GSHeaders
+		GS/GSVector4_loongarch64.h
+		GS/GSVector4i_loongarch64.h
 	)
 endif()
 
@@ -1075,6 +1085,7 @@ if (USE_VIF_IR)
 		sljit/Vif_Dynarec.cpp
 		sljit/Vif_Unpack.cpp
 		sljit/sljitHelpers.cpp
+		sljit/RecStubs.cpp
 	)
 
 	set(pcsx2sljitHeaders

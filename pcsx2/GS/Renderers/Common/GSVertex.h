@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <lsxintrin.h>
 #include "GS/GSRegs.h"
 #include "GS/GSVector.h"
 #include "GS/Renderers/HW/GSVertexHW.h"
@@ -28,6 +29,8 @@ struct alignas(32) GSVertex
 		__m128i m[2];
 #elif defined(ARCH_ARM64)
 		int32x4_t m[2];
+#elif defined(ARCH_LOONGARCH64)
+		v4i32 m[2];
 #endif
 	};
 };

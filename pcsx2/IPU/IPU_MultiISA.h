@@ -11,6 +11,10 @@
 #include <intrin.h>
 #endif
 
+#ifdef ARCH_LOONGARCH64
+#include <lsxintrin.h>
+#endif
+
 #ifdef _MSC_VER
 #define BigEndian(in) _byteswap_ulong(in)
 #else

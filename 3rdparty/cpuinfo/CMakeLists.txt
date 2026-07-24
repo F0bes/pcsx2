@@ -1,4 +1,4 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.18 FATAL_ERROR)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.5 FATAL_ERROR)
 
 # ---[ Setup project
 PROJECT(
@@ -42,7 +42,7 @@ ENDMACRO()
 
 MACRO(CPUINFO_TARGET_ENABLE_CXX11 target)
   SET_TARGET_PROPERTIES(${target} PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD 14
     CXX_EXTENSIONS NO)
 ENDMACRO()
 
@@ -95,7 +95,7 @@ IF(NOT CMAKE_SYSTEM_PROCESSOR)
       "cpuinfo will compile, but cpuinfo_initialize() will always fail.")
     SET(CPUINFO_SUPPORTED_PLATFORM FALSE)
   ENDIF()
-ELSEIF(NOT CPUINFO_TARGET_PROCESSOR MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64.*|ARM64.*|riscv(32|64))$")
+ELSEIF(NOT CPUINFO_TARGET_PROCESSOR MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64.*|ARM64.*|riscv(32|64)|loongarch64)$")
   MESSAGE(WARNING
     "Target processor architecture \"${CPUINFO_TARGET_PROCESSOR}\" is not supported in cpuinfo. "
     "cpuinfo will compile, but cpuinfo_initialize() will always fail.")
@@ -108,7 +108,7 @@ IF(NOT CMAKE_SYSTEM_NAME)
       "Target operating system is not specified. "
       "cpuinfo will compile, but cpuinfo_initialize() will always fail.")
   SET(CPUINFO_SUPPORTED_PLATFORM FALSE)
-ELSEIF(NOT CMAKE_SYSTEM_NAME MATCHES "^(Windows|WindowsStore|CYGWIN|MSYS|Darwin|Linux|Android|FreeBSD|Emscripten)$")
+ELSEIF(NOT CMAKE_SYSTEM_NAME MATCHES "^(Windows|WindowsStore|CYGWIN|MSYS|Darwin|Linux|Android|FreeBSD)$")
   IF(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.14" AND NOT IS_APPLE_OS)
     MESSAGE(WARNING
       "Target operating system \"${CMAKE_SYSTEM_NAME}\" is not supported in cpuinfo. "
@@ -184,11 +184,10 @@ IF(CPUINFO_SUPPORTED_PLATFORM)
     ELSEIF(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
       LIST(APPEND CPUINFO_SRCS src/x86/freebsd/init.c)
     ENDIF()
-  ELSEIF(CMAKE_SYSTEM_NAME MATCHES "^Windows" AND CPUINFO_TARGET_PROCESSOR MATCHES "^(ARM64|arm64|aarch64)$")
+  ELSEIF(CMAKE_SYSTEM_NAME MATCHES "^Windows" AND CPUINFO_TARGET_PROCESSOR MATCHES "^(ARM64|arm64)$")
     LIST(APPEND CPUINFO_SRCS
       src/arm/windows/init-by-logical-sys-info.c
-      src/arm/windows/init.c
-      src/arm/uarch.c)
+      src/arm/windows/init.c)
   ELSEIF(CPUINFO_TARGET_PROCESSOR MATCHES "^(armv[5-8].*|aarch64|arm64.*)$" OR IOS_ARCH MATCHES "^(armv7.*|arm64.*)$")
     LIST(APPEND CPUINFO_SRCS
       src/arm/uarch.c
@@ -224,6 +223,16 @@ IF(CPUINFO_SUPPORTED_PLATFORM)
         src/riscv/linux/init.c
 	src/riscv/linux/riscv-hw.c
 	src/riscv/linux/riscv-isa.c)
+    ENDIF()
+  ELSEIF(CPUINFO_TARGET_PROCESSOR MATCHES "^(loongarch64)$")
+    LIST(APPEND CPUINFO_SRCS
+      src/loongarch/uarch.c)
+    IF(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      LIST(APPEND CPUINFO_SRCS
+        src/loongarch/linux/init.c
+        src/loongarch/linux/cpuinfo.c
+        src/loongarch/linux/cache.c
+        src/loongarch/linux/loongarch64-isa.c)
     ENDIF()
   ENDIF()
 

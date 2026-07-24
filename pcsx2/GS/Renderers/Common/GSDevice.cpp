@@ -493,6 +493,7 @@ void GSDevice::InvalidateRenderTarget(GSTexture* t)
 
 void GSDevice::UpdateImGuiTextures()
 {
+
 	// TODO, use ImDrawData https://github.com/ocornut/imgui/issues/8597#issuecomment-2871835598
 	for (ImTextureData* im_tex : ImGui::GetPlatformIO().Textures)
 	{

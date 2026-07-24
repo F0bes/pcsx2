@@ -110,8 +110,10 @@ namespace HostSys
 
 	/// Flushes the instruction cache on the host for the specified range.
 	/// Only needed on ARM64, X86 has coherent D/I cache.
-#ifdef ARCH_X86
+#if defined(ARCH_X86)
 	[[maybe_unused]] __fi static void FlushInstructionCache(void* address, u32 size) {}
+#elif defined(ARCH_LOONGARCH64)
+	void FlushInstructionCache(void* address, u32 size);
 #else
 	void FlushInstructionCache(void* address, u32 size);
 #endif

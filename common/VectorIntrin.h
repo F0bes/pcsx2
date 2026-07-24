@@ -39,6 +39,8 @@
 
 #elif defined(ARCH_ARM64)
 #include <arm_neon.h>
+#elif defined(ARCH_LOONGARCH64)
+#include <lsxintrin.h>
 #endif
 
 #ifdef __APPLE__

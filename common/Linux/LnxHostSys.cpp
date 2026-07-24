@@ -25,6 +25,20 @@
 #include "cpuinfo.h"
 #endif
 
+
+#if defined(ARCH_LOONGARCH64)
+	#include <larchintrin.h>
+	// Thanks to https://github.com/llvm/llvm-project/pull/108557
+	#ifndef SC_ADDRERR_RD
+		// Address error was due to memory load
+		#define SC_ADDRERR_RD (1 << 30)
+	#endif
+	#ifndef SC_ADDRERR_WR
+		// Address error was due to memory store
+		#define SC_ADDRERR_WR (1 << 31)
+	#endif
+#endif
+
 static __ri uint LinuxProt(const PageProtectionMode& mode)
 {
 	u32 lnxmode = 0;
@@ -206,11 +220,19 @@ bool SharedMemoryMappingArea::Unmap(void* map_base, size_t map_size, bool is_fil
 	return true;
 }
 
-#ifdef ARCH_ARM64
+#if defined(ARCH_ARM64)
 
 void HostSys::FlushInstructionCache(void* address, u32 size)
 {
 	__builtin___clear_cache(reinterpret_cast<char*>(address), reinterpret_cast<char*>(address) + size);
+}
+
+#elif defined(ARCH_LOONGARCH64)
+
+void HostSys::FlushInstructionCache(void* address, u32 size)
+{
+	 // According to loongson, generated code doesn't need a cache flush, just a store barrier.
+	__ibar(0);
 }
 
 #endif
@@ -279,6 +301,9 @@ void PageFaultHandler::SignalHandler(int sig, siginfo_t* info, void* ctx)
 #elif defined(ARCH_ARM64)
 	void* const exception_pc = reinterpret_cast<void*>(static_cast<ucontext_t*>(ctx)->uc_mcontext.pc);
 	const bool is_write = IsStoreInstruction(exception_pc);
+#elif defined (ARCH_LOONGARCH64)
+	void* const exception_pc = reinterpret_cast<void*>(static_cast<ucontext_t*>(ctx)->uc_mcontext.__pc);
+	const bool is_write = (static_cast<ucontext_t*>(ctx)->uc_mcontext.__flags & SC_ADDRERR_WR) != 0;
 #endif
 
 #elif defined(__FreeBSD__)

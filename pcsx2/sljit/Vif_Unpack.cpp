@@ -430,7 +430,7 @@ static void nVifGen(int usn, int mask, int curCycle)
 			continue;
 
 		ucall = reinterpret_cast<nVifCall>(sljitStartBlock());
-		sljit_emit_enter(C, 0, SLJIT_ARGS2V(P, P),
+		sljit_emit_enter(C, 0, SLJIT_ARGS2V(P_R, P_R),
 			4 | SLJIT_ENTER_VECTOR(6), 0, 0);
 		vpugen.xUnpack(i);
 		vpugen.xMovDest();
